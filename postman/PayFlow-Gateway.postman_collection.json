@@ -1,0 +1,213 @@
+{
+  "info": {
+    "name": "PayFlow Gateway API",
+    "description": "End-to-end collection for merchant dashboard and payment lifecycle testing, including validation negatives.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "merchantCode", "value": "HM001" },
+    { "key": "paymentId", "value": "" },
+    { "key": "idempotencyKey", "value": "POSTMAN_IDEM_001" }
+  ],
+  "item": [
+    {
+      "name": "Merchants",
+      "item": [
+        {
+          "name": "Get Featured Dashboard Merchants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/merchants/dashboard"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Contains H&M, Indigo, Hilton', function () {",
+                  "  const codes = body.map(x => x.merchantCode);",
+                  "  pm.expect(codes).to.include('HM001');",
+                  "  pm.expect(codes).to.include('IND001');",
+                  "  pm.expect(codes).to.include('HIL001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Merchant PIN",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pin\": \"0000\"\n}" },
+            "url": "{{baseUrl}}/api/merchants/code/{{merchantCode}}/auth-pin"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments Positive Flow",
+      "item": [
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"customerId\": 2,\n  \"merchantCode\": \"{{merchantCode}}\",\n  \"amount\": 199.99,\n  \"currency\": \"INR\",\n  \"paymentMethod\": \"CARD\",\n  \"description\": \"Postman checkout flow\"\n}"
+            },
+            "url": "{{baseUrl}}/api/payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.id).to.be.a('number');",
+                  "pm.collectionVariables.set('paymentId', String(body.id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Process Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerBankCode\": \"HDFC\",\n  \"simulateHighTraffic\": false,\n  \"simulateInsufficientFunds\": false,\n  \"simulateNetworkError\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/process"
+          }
+        },
+        {
+          "name": "Get Payment By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}"
+          }
+        },
+        {
+          "name": "Update Payment Description",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated by Postman regression collection\"\n}"
+            },
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}"
+          }
+        },
+        {
+          "name": "Reverse Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer requested cancellation\",\n  \"initiatedBy\": \"MERCHANT_DASHBOARD\"\n}"
+            },
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/reverse"
+          }
+        },
+        {
+          "name": "Get Payment History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/history"
+          }
+        },
+        {
+          "name": "Get Payment Route",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/route"
+          }
+        },
+        {
+          "name": "Get Payment Conversion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/conversion"
+          }
+        },
+        {
+          "name": "Get Payment Reversals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/reversals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation Negatives",
+      "item": [
+        {
+          "name": "Reject Invalid Create Payment Payload",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"bad\",\n  \"customerId\": null,\n  \"merchantCode\": \"hm001\",\n  \"amount\": -10,\n  \"currency\": \"INRR\",\n  \"paymentMethod\": \"crypto\",\n  \"description\": \"invalid\"\n}"
+            },
+            "url": "{{baseUrl}}/api/payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject Invalid Merchant PIN Payload",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pin\": \"12\"\n}"
+            },
+            "url": "{{baseUrl}}/api/merchants/code/{{merchantCode}}/auth-pin"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

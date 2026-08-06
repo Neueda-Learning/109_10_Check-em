@@ -1,32 +1,29 @@
-# Check-em — End-to-End CI/CD Setup Guide
+# Check-em — Jenkins CI/CD Setup Guide
 
 ## Spring Boot (PayFlow) & MySQL Backend + TanStack Start Frontend (Monorepo)
 
-### GitHub Actions (CI) + Jenkins (CD) + Docker + GHCR + ngrok
+### Jenkins (build + deploy) + Docker + GHCR
 
 ---
 
 # 1. Solution Overview
 
-Monorepo CI/CD pipeline:
+Monorepo pipeline — Jenkins checks out from GitHub, runs tests, builds Docker images, pushes to GHCR, and deploys with Docker Compose.
 
 - **Backend** (`109_10_Check-em/backend/`): Spring Boot (Java 25) — PayFlow gateway
 - **Frontend** (`109_10_Check-em/frontend/shopflow-payments-main/`): TanStack Start (React) — baked `VITE_API_BASE_URL`
 - **Database**: MySQL (`payflow`) in Docker; H2 in-memory for local dev (`application.properties`)
 
-> **Note:** Local dev uses H2 (`jdbc:h2:mem:payflow`). Production/CI/CD uses MySQL via `SPRING_DATASOURCE_*` env vars. `schema.sql` creates the `payflow` database and tables on MySQL first-start (`/docker-entrypoint-initdb.d/`) and in CI via `docker exec`.
+> **Note:** Local dev uses H2 (`jdbc:h2:mem:payflow`). CI/CD and production use MySQL via `SPRING_DATASOURCE_*` env vars. `schema.sql` creates the `payflow` database and tables on MySQL first-start (`/docker-entrypoint-initdb.d/`).
 
 ---
 
 # 2. Repo Layout (CI/CD files)
 
 ```
-109_10_Check-em-main/
+109_10_Check-em/
 │
-├── .github/
-│      └── workflows/
-│              backend-ci.yml
-│              frontend-ci.yml
+├── Jenkinsfile                          ← Jenkins Pipeline (build + deploy)
 │
 ├── 109_10_Check-em/backend/
 │      ├── Dockerfile
@@ -42,107 +39,99 @@ Monorepo CI/CD pipeline:
 
 ---
 
-# 3. CI — Backend
+# 3. Jenkins Pipeline Stages
 
-`.github/workflows/backend-ci.yml` — push/PR to `main`.
+The root `Jenkinsfile` runs on every build:
 
 ```
-Checkout → JDK 25 → MySQL 8.4 service (payflow)
-    → chmod +x mvnw → apply schema.sql via docker exec → ./mvnw clean verify
-    → (push only) build/push ghcr.io/neueda-learning/checkem-api:latest
-    → Trigger Jenkins checkem-api-deploy-job
+Checkout (GitHub)
+  → Backend Tests (MySQL container + ./mvnw clean verify)
+  → Frontend Tests (npm ci + npm run build)
+  → Login to GHCR
+  → Build & Push checkem-api image
+  → Build & Push checkem-ui image
+  → Deploy (docker compose pull / down / up -d)
 ```
 
-Local `application.properties` uses H2; CI overrides with MySQL via `SPRING_DATASOURCE_*` env vars.
+Images pushed:
 
-### GitHub secrets required
-
-| Secret | Value |
-|--------|-------|
-| `JENKINS_URL` | `https://<your-subdomain>.ngrok-free.app` |
-| `JENKINS_TOKEN` | Jenkins build token (e.g. `deploy1234`) |
+- `ghcr.io/neueda-learning/checkem-api:latest` (+ git commit tag)
+- `ghcr.io/neueda-learning/checkem-ui:latest` (+ git commit tag)
 
 ---
 
-# 4. CI — Frontend
+# 4. Jenkins Server Prerequisites
 
-`.github/workflows/frontend-ci.yml` — push/PR to `main`.
-
-```
-Checkout → Node 22 → npm ci → npm run build (NITRO_PRESET=node-server)
-    → (push only) build/push ghcr.io/neueda-learning/checkem-ui:latest
-    → Trigger Jenkins checkem-ui-deploy-job
-```
-
-The Dockerfile bakes `VITE_API_BASE_URL=http://localhost:8082` so browser calls reach the API on the compose-mapped port (`8082`).
-
-TanStack Start builds with `NITRO_PRESET=node-server` for Docker (Node server on port 80 inside the container).
-
----
-
-# 5. CD — Jenkins
-
-## 5.1 Install Jenkins (deployment server)
+Install on the Jenkins host (Ubuntu/Debian example):
 
 ```bash
-# Ubuntu/Debian example
 sudo apt update
-sudo apt install -y docker.io docker-compose-plugin openjdk-21-jre
-sudo usermod -aG docker jenkins   # after installing Jenkins
+sudo apt install -y docker.io docker-compose-plugin git
+sudo usermod -aG docker jenkins
 sudo systemctl enable --now docker
 ```
 
-Install Jenkins from https://www.jenkins.io/download/ and ensure the `jenkins` user can run `docker` commands.
+Install Jenkins from https://www.jenkins.io/download/, then install these **plugins**:
 
-## 5.2 Create two Freestyle jobs with **Trigger builds remotely**
+| Plugin | Purpose |
+|--------|---------|
+| Pipeline | Declarative pipeline support |
+| Git / GitHub | Source checkout from GitHub |
+| Credentials Binding | GHCR login in pipeline |
+| Docker Pipeline (optional) | Docker-aware steps |
 
-| Job | Trigger URL |
-|-----|-------------|
-| `checkem-api-deploy-job` | `{JENKINS_URL}/buildByToken/build?job=checkem-api-deploy-job&token=<TOKEN>` |
-| `checkem-ui-deploy-job` | `{JENKINS_URL}/buildByToken/build?job=checkem-ui-deploy-job&token=<TOKEN>` |
+Install these **tools** on the agent (Manage Jenkins → Tools, or system packages):
 
-In each job:
+| Tool | Version |
+|------|---------|
+| JDK | 25 (Temurin) |
+| Node.js | 22 |
+| Docker | Latest (jenkins user in `docker` group) |
+| Docker Compose | v2 plugin |
 
-1. Check **Trigger builds remotely** and set an authentication token (same value as `JENKINS_TOKEN` GitHub secret).
-2. Add a **Execute shell** build step:
-
-```bash
-cd /opt/checkem
-docker compose pull
-docker compose down
-docker compose up -d
-docker compose ps
-```
-
-## 5.3 Prepare deployment directory on the server
-
-```bash
-sudo mkdir -p /opt/checkem
-sudo cp docker-compose.yml /opt/checkem/
-# Log in to GHCR on the server so compose can pull private images
-echo "<GITHUB_PAT>" | docker login ghcr.io -u <github-user> --password-stdin
-```
-
-Replace `ghcr.io/neueda-learning/checkem-*` in `docker-compose.yml` with your GitHub org/user if different.
+The pipeline agent must be **Linux** with shell access (`sh`). Windows-only agents are not supported by this Jenkinsfile.
 
 ---
 
-# 6. ngrok (expose Jenkins to GitHub Actions)
+# 5. Jenkins Job Setup
 
-On the Jenkins server:
+## 5.1 Create a Pipeline job
 
-```bash
-ngrok config add-authtoken <YOUR_NGROK_AUTHTOKEN>
-ngrok http 8080
-```
+1. **New Item** → name: `checkem-pipeline` → **Pipeline**
+2. Under **Pipeline**:
+   - Definition: **Pipeline script from SCM**
+   - SCM: **Git**
+   - Repository URL: your GitHub repo URL
+   - Credentials: GitHub PAT or SSH key (if private repo)
+   - Branch: `*/main`
+   - Script Path: `Jenkinsfile`
+3. Save.
 
-Use the `https://xxxx.ngrok-free.app` URL as the `JENKINS_URL` GitHub secret (no trailing slash).
+## 5.2 GHCR credentials
 
-In Jenkins: **Manage Jenkins → Configure Global Security** → enable **Allow anonymous read access** or configure the build token root URL as needed.
+1. **Manage Jenkins → Credentials → System → Global credentials → Add Credentials**
+2. Kind: **Username with password**
+3. ID: `ghcr-credentials` (must match Jenkinsfile)
+4. Username: your GitHub username
+5. Password: GitHub PAT with `write:packages` (and `read:packages` for deploy pull)
+
+## 5.3 GitHub webhook (automatic builds on push)
+
+In your GitHub repo → **Settings → Webhooks → Add webhook**:
+
+| Field | Value |
+|-------|-------|
+| Payload URL | `https://<jenkins-host>/github-webhook/` |
+| Content type | `application/json` |
+| Events | Just the push event |
+
+In the Jenkins job, enable **Build when a change is pushed to GitHub** (or **GitHub hook trigger for GITScm polling**).
+
+Alternatively, use **Poll SCM** (`H/5 * * * *`) if webhooks are not available.
 
 ---
 
-# 7. Docker Architecture & Credentials
+# 6. Docker Architecture
 
 ```
       Docker Network
@@ -158,19 +147,19 @@ In Jenkins: **Manage Jenkins → Configure Global Security** → enable **Allow 
 
 `backend/schema.sql` is mounted into MySQL's `docker-entrypoint-initdb.d` so the `payflow` schema is created on first start.
 
+Deploy runs `docker compose` from the checked-out workspace so the relative `schema.sql` volume path resolves correctly.
+
 ### H2 → MySQL switch
 
 | Environment | Database | How |
 |-------------|----------|-----|
 | Local dev | H2 in-memory | Default `application.properties` |
-| CI | MySQL 8.4 | `SPRING_DATASOURCE_*` in GitHub Actions |
+| Jenkins CI | MySQL 8.4 (ephemeral container) | `SPRING_DATASOURCE_*` in Jenkinsfile |
 | Production | MySQL 8.4 | `SPRING_DATASOURCE_*` in `docker-compose.yml` |
-
-No code change is required to switch; only environment variables.
 
 ---
 
-# 8. Verification
+# 7. Verification
 
 ```bash
 # UI
@@ -184,35 +173,25 @@ curl http://<server-ip>:8082/api/merchants/dashboard
 
 # Containers
 docker ps
-docker compose -f /opt/checkem/docker-compose.yml logs -f api
+docker compose logs -f api
 ```
 
 ---
 
-# 9. End-to-End Flow
+# 8. End-to-End Flow
 
 ```
 Developer → git push (main)
-  → GitHub Actions (build + test + docker)
-  → GHCR (checkem-api / checkem-ui)
-  → curl (ngrok) → Jenkins (api / ui deploy jobs)
+  → GitHub webhook → Jenkins (checkem-pipeline)
+  → Test backend + frontend
+  → docker build + push → GHCR
   → docker compose up -d
   → Running Application (MySQL + API + UI)
 ```
 
 ---
 
-# 10. Summary
-
-- Monorepo: TanStack Start (React) frontend + Spring Boot (Java 25) backend.
-- Images: `checkem-api:latest`, `checkem-ui:latest` on GHCR.
-- Jenkins: `checkem-api-deploy-job`, `checkem-ui-deploy-job`.
-- Docker Compose deployment: MySQL + API + UI.
-- Local dev: H2; deployed: MySQL via env vars.
-
----
-
-# 11. Quick local Docker test (before Jenkins)
+# 9. Quick Local Docker Test (before Jenkins)
 
 From the repo root, after building images locally:
 
@@ -229,6 +208,16 @@ docker build \
   --build-arg NITRO_PRESET=node-server \
   -t checkem-ui:local .
 
-# Update docker-compose.yml image tags to checkem-api:local / checkem-ui:local, then:
+# Update docker-compose.yml image tags to checkem-api:local / checkem-ui:local, then from repo root:
 docker compose up -d
 ```
+
+---
+
+# 10. Summary
+
+- Monorepo: TanStack Start (React) frontend + Spring Boot (Java 25) backend.
+- **Jenkins** checks out from GitHub, tests, builds, pushes, and deploys.
+- Images: `checkem-api:latest`, `checkem-ui:latest` on GHCR.
+- Docker Compose deployment: MySQL + API + UI.
+- Local dev: H2; deployed: MySQL via env vars.

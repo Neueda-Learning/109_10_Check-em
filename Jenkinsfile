@@ -27,48 +27,28 @@ pipeline {
         }
 
         stage('Backend Tests') {
-            steps {
-                dir(env.BACKEND_DIR) {
-                    sh '''
-                        chmod +x mvnw
-
-                        MYSQL_CONTAINER="checkem-mysql-${BUILD_NUMBER}"
-                        docker rm -f "${MYSQL_CONTAINER}" >/dev/null 2>&1 || true
-
-                        docker run -d --name "${MYSQL_CONTAINER}" \
-                            -e MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD}" \
-                            -e MYSQL_DATABASE="${MYSQL_DATABASE}" \
-                            mysql:8.4
-
-                        echo "Waiting for MySQL to become ready..."
-                        for i in $(seq 1 30); do
-                            if docker exec "${MYSQL_CONTAINER}" mysqladmin ping -h localhost -p"${MYSQL_ROOT_PASSWORD}" --silent; then
-                                break
-                            fi
-                            if [ "$i" -eq 30 ]; then
-                                echo "MySQL did not become ready in time."
-                                docker logs "${MYSQL_CONTAINER}" || true
-                                exit 1
-                            fi
-                            sleep 2
-                        done
-
-                        docker exec -i "${MYSQL_CONTAINER}" mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" < schema.sql
-
-                        MYSQL_HOST="$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${MYSQL_CONTAINER}")"
-
-                        SPRING_DATASOURCE_URL="jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_DATABASE}" \
-                        SPRING_DATASOURCE_USERNAME=root \
-                        SPRING_DATASOURCE_PASSWORD="${MYSQL_ROOT_PASSWORD}" \
-                        SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver \
-                        SPRING_H2_CONSOLE_ENABLED=false \
-                        ./mvnw clean verify
-
-                        docker rm -f "${MYSQL_CONTAINER}"
-                    '''
-                }
-            }
+    steps {
+        dir('backend') {
+            sh '''
+                chmod +x mvnw
+                MYSQL_CONTAINER=checkem-mysql-1
+                docker rm -f checkem-mysql-1
+                docker run -d --name checkem-mysql-1 -e MYSQL_ROOT_PASSWORD=n3u3da! -e MYSQL_DATABASE=payflow mysql:8.4
+                echo "Waiting for MySQL to become ready..."
+for i in $(seq 1 30); do
+  if docker exec checkem-mysql-1 mysql -uroot -p'n3u3da!' -e "SELECT 1" >/dev/null 2>&1; then
+    echo "MySQL is up and accepting root logins"
+    break
+  fi
+  echo "Attempt $i/30: not ready yet..."
+  sleep 3
+done
+                docker exec -i checkem-mysql-1 mysql -uroot -pn3u3da!
+                ...
+            '''
         }
+    }
+}
 
         stage('Frontend Tests') {
             steps {

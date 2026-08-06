@@ -127,7 +127,13 @@ function CheckoutStart() {
             <Field label="Pay in currency">
               <Select
                 value={draft.currency}
-                onValueChange={(v) => patch({ currency: v as Currency })}
+                onValueChange={(v) =>
+                  patch({
+                    currency: v as Currency,
+                    fxConsentAccepted: false,
+                    fxChargeInr: 0,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />

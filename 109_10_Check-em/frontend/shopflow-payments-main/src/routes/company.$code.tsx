@@ -28,6 +28,7 @@ function CompanyDashboard() {
   const [payments, setPayments] = useState<ApiPayment[]>([]);
   const [settings, setSettings] = useState<MerchantSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -40,6 +41,7 @@ function CompanyDashboard() {
         setPayments(merchantPayments);
         setSettings(merchantSettings);
       })
+      .catch((e) => setError(e instanceof Error ? e.message : "Unable to load merchant dashboard"))
       .finally(() => setLoading(false));
   }, [code, navigate]);
 
@@ -153,6 +155,11 @@ function CompanyDashboard() {
         {loading ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading payments...
+          </div>
+        ) : error ? (
+          <div className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <p className="font-medium">Unable to load merchant dashboard data.</p>
+            <p className="mt-1 text-xs">{error}</p>
           </div>
         ) : (
           <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-card">

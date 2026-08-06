@@ -4,8 +4,9 @@ import { ArrowLeft, ArrowRight, Heart } from "lucide-react";
 import { CheckoutShell } from "@/components/checkout-shell";
 import { OrderSummary } from "@/components/order-summary";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useDraft } from "@/hooks/use-draft";
-import { CHARITIES, fmt } from "@/lib/gateway";
+import { CHARITIES, computeFxChargeInr, fmt } from "@/lib/gateway";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/pay/charity")({
@@ -34,6 +35,11 @@ function CharityStep() {
   const { draft, patch } = useDraft();
   if (!draft) return null;
 
+  const subtotalInr = draft.amountInr + draft.charityInr;
+  const fxChargeInr = draft.currency === "INR" ? 0 : computeFxChargeInr(subtotalInr, draft.currency);
+  const needsFxConsent = draft.currency !== "INR";
+  const canProceed = !needsFxConsent || draft.fxConsentAccepted;
+
   return (
     <CheckoutShell
       step="charity"
@@ -49,12 +55,15 @@ function CharityStep() {
               <button
                 key={a}
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  const nextSubtotal = draft.amountInr + a;
+                  const nextFx = draft.currency === "INR" ? 0 : computeFxChargeInr(nextSubtotal, draft.currency);
                   patch({
                     charityInr: a,
                     charityCause: a === 0 ? null : (draft.charityCause ?? CHARITIES[0]!.name),
-                  })
-                }
+                    fxChargeInr: draft.fxConsentAccepted ? nextFx : 0,
+                  });
+                }}
                 className={cn(
                   "mono rounded-lg border px-4 py-2 text-sm transition-colors",
                   draft.charityInr === a
@@ -102,11 +111,45 @@ function CharityStep() {
           )}
         </div>
 
+        {needsFxConsent && (
+          <div className="rounded-2xl border border-warning/40 bg-warning/10 p-5 shadow-card">
+            <p className="text-sm font-semibold">Cross-currency payment disclosure</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Your payment will be converted from INR to {draft.currency}. Global card/payment rails
+              may apply a conversion spread, cross-border assessment, and processing fee.
+            </p>
+            <div className="mt-3 rounded-lg border border-border bg-card p-3 text-xs">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Estimated conversion charges</span>
+                <span className="mono font-semibold">{fmt(fxChargeInr, draft.currency)}</span>
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                These charges are added to your total payable only after you acknowledge and proceed.
+              </p>
+            </div>
+            <div className="mt-3 flex items-start gap-2">
+              <Checkbox
+                id="fx-consent"
+                checked={draft.fxConsentAccepted}
+                onCheckedChange={(checked) =>
+                  patch({
+                    fxConsentAccepted: Boolean(checked),
+                    fxChargeInr: checked ? fxChargeInr : 0,
+                  })
+                }
+              />
+              <label htmlFor="fx-consent" className="text-xs text-muted-foreground">
+                I understand and accept the above conversion charges.
+              </label>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" onClick={() => navigate({ to: "/pay/method" })}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
-          <Button onClick={() => navigate({ to: "/pay/verify" })}>
+          <Button disabled={!canProceed} onClick={() => navigate({ to: "/pay/verify" })}>
             Continue to verification <ArrowRight className="h-4 w-4" />
           </Button>
         </div>

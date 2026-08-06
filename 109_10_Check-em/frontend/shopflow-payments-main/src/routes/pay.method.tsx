@@ -26,8 +26,9 @@ import { useDraft } from "@/hooks/use-draft";
 import {
   formatCardNumberInput,
   isValidBankName,
-  isValidCardNumber,
+  isValidCardNumber16,
   isValidE164Phone,
+  isValidFutureExpiry,
   isValidUpiId,
   METHODS,
   type MethodId,
@@ -97,8 +98,8 @@ function MethodStep() {
     }
 
     const value = draft.instrument.trim();
-    if (isCardLike && !isValidCardNumber(value)) {
-      setInstrumentError("Enter a valid card number (12-19 digits with a valid checksum). ");
+    if (isCardLike && !isValidCardNumber16(value)) {
+      setInstrumentError("Enter a valid 16-digit card number in XXXX XXXX XXXX XXXX format.");
       return;
     }
     if (isCardLike) {
@@ -106,12 +107,12 @@ function MethodStep() {
         setInstrumentError("Card holder name is required.");
         return;
       }
-      if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExpiry)) {
-        setInstrumentError("Expiry must be in MM/YY format.");
+      if (!isValidFutureExpiry(cardExpiry)) {
+        setInstrumentError("Expiry must be in MM/YY format and must be this month or later.");
         return;
       }
-      if (!/^\d{3,4}$/.test(cardCvv)) {
-        setInstrumentError("CVV must be 3 or 4 digits.");
+      if (!/^\d{3}$/.test(cardCvv)) {
+        setInstrumentError("CVV must be exactly 3 digits.");
         return;
       }
     }

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarClock, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { SiteHeader, SecurityStrip } from "@/components/site-header";
@@ -15,18 +15,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useGatewayStore } from "@/hooks/use-gateway-store";
 import {
   CURRENCIES,
   METHODS,
-  fmt,
-  getMandates,
-  removeMandate,
-  rid,
-  saveMandate,
+  createBackendMandate,
+  deleteBackendMandate,
+  fetchBackendMandates,
+  formatCardNumberInput,
+  normalizeCardNumber,
+  updateBackendMandateStatus,
+  isValidCardNumber,
+  isValidE164Phone,
+  isValidUpiId,
   type Currency,
-  type Mandate,
   type MethodId,
+  type ApiMandate,
 } from "@/lib/gateway";
 
 export const Route = createFileRoute("/autopay")({
@@ -51,15 +54,45 @@ export const Route = createFileRoute("/autopay")({
 const FREQ = ["weekly", "monthly", "quarterly"] as const;
 
 function AutopayPage() {
-  const mandates = useGatewayStore<Mandate[]>(getMandates, []);
+  const [mandates, setMandates] = useState<ApiMandate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [merchantCode, setMerchantCode] = useState("HM001");
   const [label, setLabel] = useState("H&M India — monthly essentials");
   const [amount, setAmount] = useState("2500");
   const [cap, setCap] = useState("5000");
+  const [otp, setOtp] = useState("");
   const [currency, setCurrency] = useState<Currency>("INR");
   const [method, setMethod] = useState<MethodId>("card");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardHolderName, setCardHolderName] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankIfsc, setBankIfsc] = useState("");
+  const [walletPhone, setWalletPhone] = useState("");
   const [frequency, setFrequency] = useState<(typeof FREQ)[number]>("monthly");
 
-  const create = () => {
+  const normalizedMerchantCode = useMemo(() => merchantCode.trim().toUpperCase(), [merchantCode]);
+
+  const loadMandates = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchBackendMandates(normalizedMerchantCode);
+      setMandates(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to fetch mandates");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMandates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedMerchantCode]);
+
+  const create = async () => {
     const amt = Number(amount);
     const maxInr = Number(cap);
     if (!label.trim() || !amt || amt <= 0) {
@@ -70,25 +103,101 @@ function AutopayPage() {
       toast.error("The spend cap must be at least the debit amount.");
       return;
     }
-    const days = frequency === "weekly" ? 7 : frequency === "monthly" ? 30 : 90;
-    saveMandate({
-      id: rid("mndt"),
-      createdAt: new Date().toISOString(),
-      label: label.trim(),
-      amountInr: amt,
-      currency,
-      method,
-      frequency,
-      nextRun: new Date(Date.now() + days * 864e5).toISOString(),
-      active: true,
-      maxInr,
-    });
-    toast.success("Mandate created — the customer's bank will be notified 24h before each debit.");
+    if (otp.length !== 6) {
+      toast.error("Enter the 6-digit OTP to create mandate.");
+      return;
+    }
+
+    if (method === "card") {
+      if (!isValidCardNumber(cardNumber)) {
+        toast.error("Enter a valid card number.");
+        return;
+      }
+      if (!cardHolderName.trim()) {
+        toast.error("Card holder name is required.");
+        return;
+      }
+      if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExpiry)) {
+        toast.error("Card expiry must be MM/YY.");
+        return;
+      }
+    }
+
+    if (method === "upi" && !isValidUpiId(upiId)) {
+      toast.error("Enter a valid UPI ID (example: name@oksbi)");
+      return;
+    }
+
+    if (method === "wallet" && !isValidE164Phone(walletPhone)) {
+      toast.error("Wallet phone must be in E.164 format (example: +14155550102)");
+      return;
+    }
+
+    try {
+      await createBackendMandate({
+        label: label.trim(),
+        merchantCode: normalizedMerchantCode,
+        customerId: 2,
+        paymentMethod:
+          method === "netbanking"
+            ? "NET_BANKING"
+            : method === "emi"
+              ? "CARD"
+              : (method.toUpperCase() as "CARD" | "UPI" | "NET_BANKING" | "BANK_TRANSFER" | "WALLET"),
+        otp,
+        cardNumber: normalizeCardNumber(cardNumber),
+        cardHolderName: cardHolderName.trim(),
+        cardExpiry,
+        upiId: upiId.trim(),
+        bankName: bankName.trim(),
+        bankAccountNumber: bankAccountNumber.trim(),
+        bankIfsc: bankIfsc.trim().toUpperCase(),
+        walletPhone: walletPhone.trim(),
+        debitAmount: amt,
+        maxAmount: maxInr,
+        currency,
+        frequency: frequency.toUpperCase() as "WEEKLY" | "MONTHLY" | "QUARTERLY",
+      });
+      toast.success("Mandate created and OTP verified.");
+      setOtp("");
+      await loadMandates();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to create mandate");
+    }
   };
 
-  const toggle = (m: Mandate) => {
-    saveMandate({ ...m, active: !m.active });
-    toast.info(m.active ? "Mandate paused." : "Mandate resumed.");
+  const toggle = async (m: ApiMandate) => {
+    if (otp.length !== 6) {
+      toast.error("Enter OTP to pause or resume a mandate.");
+      return;
+    }
+    try {
+      await updateBackendMandateStatus({
+        mandateId: m.id,
+        status: m.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
+        otp,
+      });
+      toast.info(m.status === "ACTIVE" ? "Mandate paused." : "Mandate resumed.");
+      setOtp("");
+      await loadMandates();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to update mandate status");
+    }
+  };
+
+  const deleteMandate = async (id: number) => {
+    if (otp.length !== 6) {
+      toast.error("Enter OTP to delete a mandate.");
+      return;
+    }
+    try {
+      await deleteBackendMandate(id, otp);
+      toast.success("Mandate deleted.");
+      setOtp("");
+      await loadMandates();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to delete mandate");
+    }
   };
 
   return (
@@ -109,6 +218,13 @@ function AutopayPage() {
             <div className="mt-4 space-y-4">
               <Field label="Mandate name">
                 <Input value={label} onChange={(e) => setLabel(e.target.value)} />
+              </Field>
+              <Field label="Merchant code">
+                <Input
+                  value={merchantCode}
+                  onChange={(e) => setMerchantCode(e.target.value.toUpperCase())}
+                  placeholder="HM001"
+                />
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Debit amount (₹)">
@@ -165,6 +281,93 @@ function AutopayPage() {
                   </SelectContent>
                 </Select>
               </Field>
+
+              {method === "card" && (
+                <>
+                  <Field label="Card number">
+                    <Input
+                      className="mono"
+                      value={cardNumber}
+                      placeholder="4242 4242 4242 4242"
+                      onChange={(e) => setCardNumber(formatCardNumberInput(e.target.value))}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Card holder name">
+                      <Input
+                        value={cardHolderName}
+                        onChange={(e) => setCardHolderName(e.target.value)}
+                        placeholder="Aarav Sharma"
+                      />
+                    </Field>
+                    <Field label="Expiry (MM/YY)">
+                      <Input
+                        className="mono"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value.replace(/[^0-9/]/g, "").slice(0, 5))}
+                        placeholder="08/29"
+                      />
+                    </Field>
+                  </div>
+                </>
+              )}
+
+              {method === "upi" && (
+                <Field label="UPI ID">
+                  <Input
+                    className="mono"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    placeholder="name@oksbi"
+                  />
+                </Field>
+              )}
+
+              {(method === "netbanking" || method === "emi") && (
+                <>
+                  <Field label="Bank name">
+                    <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Account number">
+                      <Input
+                        className="mono"
+                        value={bankAccountNumber}
+                        onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                      />
+                    </Field>
+                    <Field label="IFSC">
+                      <Input
+                        className="mono"
+                        value={bankIfsc}
+                        onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
+                        placeholder="HDFC0001234"
+                      />
+                    </Field>
+                  </div>
+                </>
+              )}
+
+              {method === "wallet" && (
+                <Field label="Wallet phone (E.164)">
+                  <Input
+                    className="mono"
+                    value={walletPhone}
+                    onChange={(e) => setWalletPhone(e.target.value)}
+                    placeholder="+14155550102"
+                  />
+                </Field>
+              )}
+
+              <Field label="OTP verification (Demo: 123456)">
+                <Input
+                  className="mono"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                  placeholder="123456"
+                />
+              </Field>
+
               <Button className="w-full" onClick={create}>
                 <Plus className="h-4 w-4" /> Create mandate
               </Button>
@@ -176,7 +379,11 @@ function AutopayPage() {
           </div>
 
           <div className="space-y-3">
-            {mandates.length === 0 ? (
+            {loading ? (
+              <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+                <p className="text-sm text-muted-foreground">Loading mandates...</p>
+              </div>
+            ) : mandates.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
                 <CalendarClock className="mx-auto h-6 w-6 text-muted-foreground" />
                 <p className="mt-3 text-sm font-semibold">No mandates yet</p>
@@ -190,27 +397,27 @@ function AutopayPage() {
             ) : (
               mandates.map((m) => (
                 <div
-                  key={m.id}
+                  key={String(m.id)}
                   className="rounded-2xl border border-border bg-card p-5 shadow-card"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">{m.label}</p>
-                      <p className="mono text-[11px] text-muted-foreground">{m.id}</p>
+                      <p className="mono text-[11px] text-muted-foreground">MNDT-{m.id}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">
-                        {m.active ? "Active" : "Paused"}
+                        {m.status === "ACTIVE" ? "Active" : "Paused"}
                       </span>
                       <Switch
-                        checked={m.active}
+                        checked={m.status === "ACTIVE"}
                         onCheckedChange={() => toggle(m)}
                         aria-label="Toggle mandate"
                       />
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeMandate(m.id)}
+                        onClick={() => deleteMandate(m.id)}
                         aria-label="Delete mandate"
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -218,10 +425,10 @@ function AutopayPage() {
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 text-xs sm:grid-cols-4">
-                    <Meta label="Debit" value={fmt(m.amountInr, m.currency)} />
-                    <Meta label="Cap" value={fmt(m.maxInr, m.currency)} />
-                    <Meta label="Frequency" value={m.frequency} />
-                    <Meta label="Next run" value={new Date(m.nextRun).toLocaleDateString()} />
+                    <Meta label="Debit" value={`${m.currency} ${m.debitAmount.toFixed(2)}`} />
+                    <Meta label="Cap" value={`${m.currency} ${m.maxAmount.toFixed(2)}`} />
+                    <Meta label="Frequency" value={m.frequency.toLowerCase()} />
+                    <Meta label="Updated" value={new Date(m.updatedAt).toLocaleDateString()} />
                   </div>
                 </div>
               ))

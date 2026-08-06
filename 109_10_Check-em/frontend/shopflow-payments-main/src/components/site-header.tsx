@@ -20,6 +20,7 @@ export function SiteHeader() {
           <HeaderLink to="/gateway">Gateway</HeaderLink>
           <HeaderLink to="/payments">Payments</HeaderLink>
           <HeaderLink to="/autopay">Autopay</HeaderLink>
+          <HeaderLink to="/contact">Contact</HeaderLink>
           <ThemeToggle />
         </nav>
       </div>

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutopayRouteImport } from './routes/autopay'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as GatewayRouteImport } from './routes/gateway'
 import { Route as CompanyCodeRouteImport } from './routes/company.$code'
 import { Route as PayCharityRouteImport } from './routes/pay.charity'
@@ -31,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
 const AutopayRoute = AutopayRouteImport.update({
   id: '/autopay',
   path: '/autopay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GatewayRoute = GatewayRouteImport.update({
@@ -92,6 +98,7 @@ const PayReceiptIdRoute = PayReceiptIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/autopay': typeof AutopayRoute
+  '/contact': typeof ContactRoute
   '/gateway': typeof GatewayRoute
   '/company/$code': typeof CompanyCodeRouteWithChildren
   '/pay/charity': typeof PayCharityRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/autopay': typeof AutopayRoute
+  '/contact': typeof ContactRoute
   '/gateway': typeof GatewayRoute
   '/company/$code': typeof CompanyCodeRouteWithChildren
   '/pay/charity': typeof PayCharityRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/autopay': typeof AutopayRoute
+  '/contact': typeof ContactRoute
   '/gateway': typeof GatewayRoute
   '/company/$code': typeof CompanyCodeRouteWithChildren
   '/pay/charity': typeof PayCharityRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/autopay'
+    | '/contact'
     | '/gateway'
     | '/company/$code'
     | '/pay/charity'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/autopay'
+    | '/contact'
     | '/gateway'
     | '/company/$code'
     | '/pay/charity'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/autopay'
+    | '/contact'
     | '/gateway'
     | '/company/$code'
     | '/pay/charity'
@@ -186,6 +198,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AutopayRoute: typeof AutopayRoute
+  ContactRoute: typeof ContactRoute
   GatewayRoute: typeof GatewayRoute
   CompanyCodeRoute: typeof CompanyCodeRouteWithChildren
   PayCharityRoute: typeof PayCharityRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       path: '/autopay'
       fullPath: '/autopay'
       preLoaderRoute: typeof AutopayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gateway': {
@@ -310,6 +330,7 @@ const CompanyCodeRouteWithChildren = CompanyCodeRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AutopayRoute: AutopayRoute,
+  ContactRoute: ContactRoute,
   GatewayRoute: GatewayRoute,
   CompanyCodeRoute: CompanyCodeRouteWithChildren,
   PayCharityRoute: PayCharityRoute,

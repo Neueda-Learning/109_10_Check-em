@@ -73,7 +73,7 @@ pipeline {
 
                 docker run -d \
                 --name frontend \
-                -p 3000:80 \
+                -p 8082:3000 \
                 checkem-frontend
                 '''
 

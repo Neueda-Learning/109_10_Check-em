@@ -28,7 +28,7 @@ pipeline {
 
         stage('Backend Tests') {
     steps {
-        dir('backend') {
+        dir(env.BACKEND_DIR) {
             sh '''
                 chmod +x mvnw
                 MYSQL_CONTAINER=checkem-mysql-1

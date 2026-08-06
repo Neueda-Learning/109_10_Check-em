@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { isCompanyAuthenticated } from "@/lib/company-session";
 import { downloadCompanyPaymentsPdf } from "@/lib/pdf";
 import {
   companyVisualsByCode,
@@ -29,7 +28,6 @@ export const Route = createFileRoute("/company/$code")({
 
 function CompanyDashboard() {
   const { code } = Route.useParams();
-  const navigate = useNavigate();
   const [payments, setPayments] = useState<ApiPayment[]>([]);
   const [settings, setSettings] = useState<MerchantSettings | null>(null);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
@@ -58,25 +56,21 @@ function CompanyDashboard() {
   const compareRank = (left: number, right: number) => left - right;
 
   useEffect(() => {
-    if (!isCompanyAuthenticated(code)) {
-      navigate({ to: "/company/$code/login", params: { code } });
-      return;
-    }
-    setError("");
-    setPaymentsLoading(true);
-    setSettingsLoading(true);
+  setError("");
+  setPaymentsLoading(true);
+  setSettingsLoading(true);
 
-    fetchMerchantPayments(code)
-      .then(setPayments)
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : "Unable to load merchant dashboard");
-      })
-      .finally(() => setPaymentsLoading(false));
+  fetchMerchantPayments(code)
+    .then(setPayments)
+    .catch((e) => {
+      setError(e instanceof Error ? e.message : "Unable to load merchant dashboard");
+    })
+    .finally(() => setPaymentsLoading(false));
 
-    fetchMerchantSettings(code)
-      .then(setSettings)
-      .finally(() => setSettingsLoading(false));
-  }, [code, navigate]);
+  fetchMerchantSettings(code)
+    .then(setSettings)
+    .finally(() => setSettingsLoading(false));
+}, [code]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

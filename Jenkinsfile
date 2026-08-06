@@ -11,9 +11,11 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git 'https://github.com/Neueda-Learning/109_10_Check-em.git'
+                git branch: 'main',
+                    url: 'https://github.com/Neueda-Learning/109_10_Check-em.git'
             }
         }
+
 
         stage('Build Backend') {
             steps {
@@ -23,6 +25,7 @@ pipeline {
             }
         }
 
+
         stage('Build Frontend') {
             steps {
                 dir('frontend/shopflow-payments-main') {
@@ -31,6 +34,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Docker Build') {
             steps {
@@ -46,23 +50,40 @@ pipeline {
             }
         }
 
+
+        stage('Stop Existing Containers') {
+            steps {
+                sh '''
+                docker rm -f backend || true
+                docker rm -f frontend || true
+                '''
+            }
+        }
+
+
         stage('Run Containers') {
             steps {
 
                 sh '''
-                docker rm -f backend || true
-                docker rm -f frontend || true
-
                 docker run -d \
                 --name backend \
-                -p 8080:8080 \
+                -p 8081:8080 \
                 checkem-backend
+
 
                 docker run -d \
                 --name frontend \
                 -p 3000:80 \
                 checkem-frontend
                 '''
+
+            }
+        }
+
+
+        stage('Verify Containers') {
+            steps {
+                sh 'docker ps'
             }
         }
 

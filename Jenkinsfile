@@ -19,7 +19,7 @@ pipeline {
 
         stage('Build Backend') {
             steps {
-                dir('backend') {
+                dir('109_10_Check-em/backend') {
                     sh 'mvn clean package -DskipTests'
                 }
             }
@@ -28,7 +28,7 @@ pipeline {
 
         stage('Build Frontend') {
             steps {
-                dir('frontend/shopflow-payments-main') {
+                dir('109_10_Check-em/frontend/shopflow-payments-main') {
                     sh 'npm install'
                     sh 'npm run build'
                 }

@@ -39,11 +39,11 @@ pipeline {
         stage('Docker Build') {
             steps {
 
-                dir('backend') {
+                dir('109_10_Check-em/backend') {
                     sh 'docker build -t $BACKEND_IMAGE .'
                 }
 
-                dir('frontend/shopflow-payments-main') {
+                dir('109_10_Check-em/frontend/shopflow-payments-main') {
                     sh 'docker build -t $FRONTEND_IMAGE .'
                 }
 

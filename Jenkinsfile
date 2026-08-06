@@ -1,117 +1,71 @@
 pipeline {
+
     agent any
 
     environment {
-        REGISTRY         = 'ghcr.io/neueda-learning'
-        API_IMAGE        = "${REGISTRY}/checkem-api"
-        UI_IMAGE         = "${REGISTRY}/checkem-ui"
-        BACKEND_DIR      = '109_10_Check-em/backend'
-        FRONTEND_DIR     = '109_10_Check-em/frontend/shopflow-payments-main'
-        VITE_API_BASE_URL = 'http://localhost:8082'
-        NITRO_PRESET     = 'node-server'
-        MYSQL_ROOT_PASSWORD = 'n3u3da!'
-        MYSQL_DATABASE   = 'payflow'
-    }
-
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '20'))
-        timeout(time: 45, unit: 'MINUTES')
-        disableConcurrentBuilds()
+        BACKEND_IMAGE = "checkem-backend"
+        FRONTEND_IMAGE = "checkem-frontend"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                checkout scm
+                git 'https://github.com/Neueda-Learning/109_10_Check-em.git'
             }
         }
 
-        stage('Backend Tests') {
-    steps {
-        dir('109_10_Check-em/backend') {
-            sh '''
-                chmod +x mvnw
-                ./mvnw test
-            '''
-        }
-    }
-}
-
-        stage('Frontend Tests') {
+        stage('Build Backend') {
             steps {
-                dir(env.FRONTEND_DIR) {
-                    sh '''
-                        npm ci
-                        NITRO_PRESET="${NITRO_PRESET}" npm run build
-                    '''
+                dir('backend') {
+                    sh 'mvn clean package -DskipTests'
                 }
             }
         }
 
-        stage('Login to GHCR') {
+        stage('Build Frontend') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ghcr-credentials',
-                    usernameVariable: 'GHCR_USER',
-                    passwordVariable: 'GHCR_TOKEN'
-                )]) {
-                    sh 'echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin'
+                dir('frontend/shopflow-payments-main') {
+                    sh 'npm install'
+                    sh 'npm run build'
                 }
             }
         }
 
-        stage('Build & Push API Image') {
+        stage('Docker Build') {
             steps {
-                dir(env.BACKEND_DIR) {
-                    sh '''
-                        docker build \
-                            -t "${API_IMAGE}:latest" \
-                            -t "${API_IMAGE}:${GIT_COMMIT}" \
-                            .
 
-                        docker push "${API_IMAGE}:latest"
-                        docker push "${API_IMAGE}:${GIT_COMMIT}"
-                    '''
+                dir('backend') {
+                    sh 'docker build -t $BACKEND_IMAGE .'
                 }
+
+                dir('frontend/shopflow-payments-main') {
+                    sh 'docker build -t $FRONTEND_IMAGE .'
+                }
+
             }
         }
 
-        stage('Build & Push UI Image') {
+        stage('Run Containers') {
             steps {
-                dir(env.FRONTEND_DIR) {
-                    sh '''
-                        docker build \
-                            --build-arg VITE_API_BASE_URL="${VITE_API_BASE_URL}" \
-                            --build-arg NITRO_PRESET="${NITRO_PRESET}" \
-                            -t "${UI_IMAGE}:latest" \
-                            -t "${UI_IMAGE}:${GIT_COMMIT}" \
-                            .
 
-                        docker push "${UI_IMAGE}:latest"
-                        docker push "${UI_IMAGE}:${GIT_COMMIT}"
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
                 sh '''
-                    docker compose pull
-                    docker compose down
-                    docker compose up -d
-                    docker compose ps
+                docker rm -f backend || true
+                docker rm -f frontend || true
+
+                docker run -d \
+                --name backend \
+                -p 8080:8080 \
+                checkem-backend
+
+                docker run -d \
+                --name frontend \
+                -p 3000:80 \
+                checkem-frontend
                 '''
             }
         }
+
     }
 
-    post {
-        failure {
-            sh 'docker rm -f "checkem-mysql-${BUILD_NUMBER}" >/dev/null 2>&1 || true'
-        }
-        aborted {
-            sh 'docker rm -f "checkem-mysql-${BUILD_NUMBER}" >/dev/null 2>&1 || true'
-        }
-    }
 }

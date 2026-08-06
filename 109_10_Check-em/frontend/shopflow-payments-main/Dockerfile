@@ -17,7 +17,7 @@ WORKDIR /app
 
 COPY --from=builder /app/.output /app/.output
 
-EXPOSE 80
+EXPOSE 3000
 
 ENV HOST=0.0.0.0
 ENV PORT=3000

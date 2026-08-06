@@ -28,7 +28,7 @@ pipeline {
 
         stage('Build Frontend') {
     steps {
-        dir('frontend/shopflow-payments-main') {
+        dir('109_10_Check-em/frontend/shopflow-payments-main') {
             sh 'npm install'
             sh 'NITRO_PRESET=node-server npm run build'
         }

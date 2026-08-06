@@ -568,7 +568,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     clearTimeout(timeout);
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
-        "Backend request timed out. Check that the Payflow backend is running on http://localhost:8080.",
+        "Backend request timed out. Check that the Payflow backend is running on http://10.9.78.23:8081.",
       );
     }
     throw error;

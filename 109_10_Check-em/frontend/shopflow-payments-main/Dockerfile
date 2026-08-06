@@ -1,3 +1,4 @@
+# Build stage
 FROM node:20 AS builder
 
 WORKDIR /app
@@ -10,10 +11,14 @@ COPY . .
 
 RUN npm run build
 
-FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Runtime stage
+FROM node:20-alpine
 
-EXPOSE 80
+WORKDIR /app
 
-CMD ["nginx","-g","daemon off;"]
+COPY --from=builder /app/.output ./.output
+
+EXPOSE 3000
+
+CMD ["node", ".output/server/index.mjs"]

@@ -27,13 +27,13 @@ pipeline {
 
 
         stage('Build Frontend') {
-            steps {
-                dir('109_10_Check-em/frontend/shopflow-payments-main') {
-                    sh 'npm install'
-                    sh 'npm run build'
-                }
-            }
+    steps {
+        dir('frontend/shopflow-payments-main') {
+            sh 'npm install'
+            sh 'NITRO_PRESET=node-server npm run build'
         }
+    }
+}
 
 
         stage('Docker Build') {

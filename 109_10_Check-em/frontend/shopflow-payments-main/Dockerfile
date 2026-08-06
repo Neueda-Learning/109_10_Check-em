@@ -1,4 +1,3 @@
-# Build stage
 FROM node:20 AS builder
 
 WORKDIR /app
@@ -9,16 +8,18 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build
+RUN NITRO_PRESET=node-server npm run build
 
 
-# Runtime stage
 FROM node:20-alpine
 
 WORKDIR /app
 
-COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/.output /app/.output
 
 EXPOSE 3000
 
-CMD ["node", ".output/server/index.mjs"]
+ENV HOST=0.0.0.0
+ENV PORT=3000
+
+CMD ["node", "/app/.output/server/index.mjs"]

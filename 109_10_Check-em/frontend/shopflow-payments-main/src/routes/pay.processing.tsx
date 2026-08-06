@@ -24,8 +24,6 @@ function ProcessingStep() {
   const navigate = useNavigate();
   const { draft } = useDraft();
   const [cardPin, setCardPin] = useState("");
-  const [netbankingUser, setNetbankingUser] = useState("");
-  const [netbankingPassword, setNetbankingPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -37,12 +35,8 @@ function ProcessingStep() {
   const paymentId = Number(cleanedId);
 
   const canSubmit = useMemo(() => {
-    if (method === "card" || method === "emi") return cardPin.length === 4;
-    if (method === "netbanking") {
-      return netbankingUser.trim().toUpperCase() === "ABC" && netbankingPassword.trim().toUpperCase() === "ABC";
-    }
-    return otp === "121212" || otp === "242424";
-  }, [cardPin, method, netbankingPassword, netbankingUser, otp]);
+    return cardPin.length === 4 && (otp === "121212" || otp === "242424");
+  }, [cardPin, otp]);
 
   if (!draft) {
     return (
@@ -86,9 +80,7 @@ function ProcessingStep() {
     setStatusText("");
 
     try {
-      if (method !== "card" && method !== "emi" && method !== "netbanking") {
-        setStatusText("OTP VERIFIED");
-      }
+      setStatusText("PIN AND OTP VERIFIED");
 
       const balanceCheck = await fetchPaymentBalanceCheck(paymentId);
       const sufficientFunds = balanceCheck.sufficientFunds;
@@ -149,52 +141,28 @@ function ProcessingStep() {
           <p className="mt-2 text-sm text-sky-900">Hi {draft.customer.name || "Customer"}, account verified.</p>
 
           <div className="mt-5 space-y-4 rounded-xl border border-sky-200 bg-white p-4">
-            {(method === "card" || method === "emi") && (
-              <div className="space-y-1.5">
-                <Label>Card PIN</Label>
-                <Input
-                  className="mono"
-                  type="password"
-                  value={cardPin}
-                  onChange={(e) => setCardPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="Enter 4-digit PIN"
-                />
-              </div>
-            )}
-
-            {method === "netbanking" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label>Net Banking Username</Label>
-                  <Input value={netbankingUser} onChange={(e) => setNetbankingUser(e.target.value)} placeholder="ABC" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Net Banking Password</Label>
-                  <Input
-                    type="password"
-                    value={netbankingPassword}
-                    onChange={(e) => setNetbankingPassword(e.target.value)}
-                    placeholder="ABC"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Use username ABC and password ABC for simulation.</p>
-              </>
-            )}
-
-            {method !== "card" && method !== "emi" && method !== "netbanking" && (
-              <>
-                <h3 className="text-sm font-semibold">2-Factor Authentication</h3>
-                <div className="space-y-1.5">
-                  <Label>OTP</Label>
-                  <Input
-                    className="mono"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="121212 or 242424"
-                  />
-                </div>
-              </>
-            )}
+            <h3 className="text-sm font-semibold">2-Factor Authentication</h3>
+            <div className="space-y-1.5">
+              <Label>Transaction PIN</Label>
+              <Input
+                className="mono"
+                type="password"
+                value={cardPin}
+                onChange={(e) => setCardPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="Enter 4-digit PIN"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Enter OTP here</Label>
+              <Input
+                className="mono"
+                type="password"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Enter OTP here"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">All payment methods require both PIN and OTP for simulation.</p>
 
             <Button onClick={verifyAndProcess} disabled={!canSubmit || submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Authenticate and Pay"}

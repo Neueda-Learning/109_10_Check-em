@@ -608,6 +608,21 @@ export async function fetchMerchants() {
   return api<ApiMerchant[]>("/api/merchants");
 }
 
+export async function createMerchant(input: {
+  userId: number;
+  businessName: string;
+  merchantCode: string;
+  currency: string;
+}) {
+  const params = new URLSearchParams({
+    userId: String(input.userId),
+    businessName: input.businessName.trim(),
+    merchantCode: input.merchantCode.trim().toUpperCase(),
+    currency: input.currency.trim().toUpperCase(),
+  });
+  return api<ApiMerchant>(`/api/merchants?${params.toString()}`, { method: "POST" });
+}
+
 export async function fetchDashboardMerchants() {
   return api<ApiDashboardMerchant[]>("/api/merchants/dashboard");
 }

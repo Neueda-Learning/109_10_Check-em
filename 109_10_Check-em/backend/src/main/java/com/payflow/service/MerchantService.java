@@ -16,7 +16,7 @@ import com.payflow.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -28,7 +28,6 @@ public class MerchantService {
     private final BankRoutingRepository bankRoutingRepository;
     private final PaymentRepository paymentRepository;
 
-    private static final List<String> FEATURED_MERCHANT_CODES = List.of("HM001", "IND001", "HIL001");
     private static final Map<String, String> DISPLAY_NAMES = Map.of(
             "HM001", "H&M",
             "IND001", "Indigo",
@@ -104,12 +103,10 @@ public class MerchantService {
     }
 
     public List<DashboardMerchantResponse> getDashboardMerchants() {
-        List<DashboardMerchantResponse> items = new ArrayList<>();
-        for (String merchantCode : FEATURED_MERCHANT_CODES) {
-            merchantRepository.findByMerchantCode(merchantCode)
-                    .ifPresent(merchant -> items.add(toDashboardMerchant(merchant)));
-        }
-        return items;
+        return merchantRepository.findAll().stream()
+                .map(this::toDashboardMerchant)
+                .sorted(Comparator.comparing(DashboardMerchantResponse::getMerchantCode))
+                .toList();
     }
 
     private DashboardMerchantResponse toDashboardMerchant(Merchant merchant) {

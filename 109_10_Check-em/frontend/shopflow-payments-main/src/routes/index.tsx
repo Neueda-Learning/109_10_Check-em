@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, CreditCard, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   companyVisualsByCode,
+  createMerchant,
   fetchDashboardMerchants,
   fmt,
   type ApiDashboardMerchant,
@@ -32,13 +45,73 @@ function Dashboard() {
   const [merchants, setMerchants] = useState<ApiDashboardMerchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState("1");
+  const [businessName, setBusinessName] = useState("");
+  const [merchantCode, setMerchantCode] = useState("");
+  const [currency, setCurrency] = useState("INR");
+
+  const loadMerchants = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const list = await fetchDashboardMerchants();
+      setMerchants(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load companies");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetchDashboardMerchants()
-      .then(setMerchants)
-      .catch((e) => setError(e instanceof Error ? e.message : "Unable to load companies"))
-      .finally(() => setLoading(false));
+    void loadMerchants();
   }, []);
+
+  const submitMerchant = async () => {
+    const parsedUserId = Number(ownerUserId);
+    if (!Number.isFinite(parsedUserId) || parsedUserId <= 0) {
+      setAddError("Owner user ID must be a positive number.");
+      return;
+    }
+    if (businessName.trim().length < 2) {
+      setAddError("Business name must be at least 2 characters.");
+      return;
+    }
+    if (!/^[A-Za-z0-9]{3,12}$/.test(merchantCode.trim())) {
+      setAddError("Merchant code must be 3-12 letters or numbers.");
+      return;
+    }
+    if (!/^[A-Za-z]{3}$/.test(currency.trim())) {
+      setAddError("Currency must be a 3-letter code, e.g. INR.");
+      return;
+    }
+
+    setAddBusy(true);
+    setAddError("");
+    try {
+      await createMerchant({
+        userId: parsedUserId,
+        businessName,
+        merchantCode,
+        currency,
+      });
+      toast.success("Merchant added to dashboard.");
+      setAddOpen(false);
+      setBusinessName("");
+      setMerchantCode("");
+      setCurrency("INR");
+      window.location.reload();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unable to add merchant";
+      setAddError(message);
+      toast.error(message);
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -60,6 +133,68 @@ function Dashboard() {
             <Button variant="outline" asChild>
               <Link to="/payments">All payments view</Link>
             </Button>
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">Add merchant</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Merchant</DialogTitle>
+                  <DialogDescription>
+                    Enter merchant details to add a new company card to this dashboard.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ownerUserId">Owner user ID</Label>
+                    <Input
+                      id="ownerUserId"
+                      value={ownerUserId}
+                      onChange={(e) => setOwnerUserId(e.target.value.replace(/\D/g, ""))}
+                      placeholder="1"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="businessName">Business name</Label>
+                    <Input
+                      id="businessName"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="Example Retail Pvt Ltd"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="merchantCode">Merchant code</Label>
+                    <Input
+                      id="merchantCode"
+                      value={merchantCode}
+                      onChange={(e) => setMerchantCode(e.target.value.toUpperCase())}
+                      placeholder="ABC123"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="currency">Currency</Label>
+                    <Input
+                      id="currency"
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                      placeholder="INR"
+                    />
+                  </div>
+                  {addError && <p className="text-xs text-destructive">{addError}</p>}
+                </div>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddOpen(false)} disabled={addBusy}>
+                    Cancel
+                  </Button>
+                  <Button onClick={submitMerchant} disabled={addBusy}>
+                    {addBusy ? "Adding..." : "Add merchant"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 

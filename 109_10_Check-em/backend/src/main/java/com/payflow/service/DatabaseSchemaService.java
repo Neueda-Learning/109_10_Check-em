@@ -60,6 +60,12 @@ public class DatabaseSchemaService {
                     payment_method VARCHAR(30) NOT NULL,
                     status VARCHAR(30) NOT NULL DEFAULT 'INITIATED',
                     description VARCHAR(255) NULL,
+                    order_id VARCHAR(100) NULL,
+                    customer_name VARCHAR(120) NULL,
+                    customer_email VARCHAR(255) NULL,
+                    customer_phone VARCHAR(25) NULL,
+                    autopay_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+                    subscription_label VARCHAR(255) NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
@@ -70,6 +76,13 @@ public class DatabaseSchemaService {
                         FOREIGN KEY (merchant_id) REFERENCES merchants(id)
                 )
                 """);
+
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100) NULL");
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_name VARCHAR(120) NULL");
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_email VARCHAR(255) NULL");
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(25) NULL");
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS autopay_opt_in BOOLEAN NOT NULL DEFAULT FALSE");
+            jdbcTemplate.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS subscription_label VARCHAR(255) NULL");
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS payment_status_history (
@@ -200,6 +213,10 @@ public class DatabaseSchemaService {
                     currency VARCHAR(10) NOT NULL,
                     frequency VARCHAR(20) NOT NULL,
                     status VARCHAR(20) NOT NULL,
+                    order_id VARCHAR(100) NULL,
+                    customer_name VARCHAR(120) NULL,
+                    customer_email VARCHAR(255) NULL,
+                    customer_phone VARCHAR(25) NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
@@ -207,9 +224,15 @@ public class DatabaseSchemaService {
                 ) ENGINE=InnoDB
                 """);
 
+        jdbcTemplate.execute("ALTER TABLE autopay_mandates ADD COLUMN IF NOT EXISTS order_id VARCHAR(100) NULL");
+        jdbcTemplate.execute("ALTER TABLE autopay_mandates ADD COLUMN IF NOT EXISTS customer_name VARCHAR(120) NULL");
+        jdbcTemplate.execute("ALTER TABLE autopay_mandates ADD COLUMN IF NOT EXISTS customer_email VARCHAR(255) NULL");
+        jdbcTemplate.execute("ALTER TABLE autopay_mandates ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(25) NULL");
+
         ensureDemoCompanies();
             ensureRoutingSeedData();
             ensureDemoPayments();
+            ensureDemoAutopayMandates();
     }
 
     private void ensureDemoCompanies() {
@@ -336,6 +359,80 @@ public class DatabaseSchemaService {
             insertRouteIfMissing(p6, "SBI", "HSBC", "SBI", "STATIC", "ROUTED", "International settlement route");
             }
 
+    private void ensureDemoAutopayMandates() {
+        insertMandateIfMissing(
+            "H&M Monthly Essentials",
+            "HM001",
+            "alice@demo.com",
+            "CARD",
+            "CARD",
+            "4242********4242",
+            "Alice Johnson",
+            null,
+            null,
+            null,
+            new BigDecimal("1999.00"),
+            new BigDecimal("5000.00"),
+            "INR",
+            "MONTHLY",
+            "ACTIVE"
+        );
+
+        insertMandateIfMissing(
+            "Max Auto Refill",
+            "MAX001",
+            "fatima@demo.com",
+            "WALLET",
+            "WALLET",
+            null,
+            null,
+            null,
+            null,
+            null,
+            new BigDecimal("1500.00"),
+            new BigDecimal("3000.00"),
+            "INR",
+            "MONTHLY",
+            "ACTIVE"
+        );
+
+        insertMandateIfMissing(
+            "Indigo Trip Saver",
+            "IND001",
+            "liam@demo.com",
+            "UPI",
+            "UPI",
+            null,
+            null,
+            "liam@oksbi",
+            null,
+            null,
+            new BigDecimal("2200.00"),
+            new BigDecimal("6000.00"),
+            "INR",
+            "MONTHLY",
+            "ACTIVE"
+        );
+
+        insertMandateIfMissing(
+            "Hilton Booking Hold",
+            "HIL001",
+            "alice@demo.com",
+            "CARD",
+            "CARD",
+            "5555********4444",
+            "Alice Johnson",
+            null,
+            null,
+            null,
+            new BigDecimal("8000.00"),
+            new BigDecimal("12000.00"),
+            "USD",
+            "QUARTERLY",
+            "PAUSED"
+        );
+    }
+
     private void createUserIfMissing(String name, String email, String phone, String role) {
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE email = ?",
@@ -392,6 +489,73 @@ public class DatabaseSchemaService {
             """,
             preferredBankCode,
             merchantCode
+        );
+        }
+
+        private void insertMandateIfMissing(String label,
+                        String merchantCode,
+                        String customerEmail,
+                        String paymentMethod,
+                        String instrumentType,
+                        String cardNumberMasked,
+                        String cardHolderName,
+                        String upiId,
+                        String bankAccountMasked,
+                        String bankIfsc,
+                        BigDecimal debitAmount,
+                        BigDecimal maxAmount,
+                        String currency,
+                        String frequency,
+                        String status) {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM autopay_mandates WHERE label = ? AND merchant_code = ? AND customer_id = (SELECT id FROM users WHERE email = ?)",
+            Integer.class,
+            label,
+            merchantCode,
+            customerEmail
+        );
+        if (count != null && count > 0) {
+            return;
+        }
+
+        jdbcTemplate.update(
+            """
+            INSERT INTO autopay_mandates (
+                label,
+                merchant_code,
+                customer_id,
+                payment_method,
+                instrument_type,
+                card_number_masked,
+                card_holder_name,
+                upi_id,
+                bank_account_masked,
+                bank_ifsc,
+                debit_amount,
+                max_amount,
+                currency,
+                frequency,
+                status
+            )
+            SELECT ?, ?, u.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            FROM users u
+            WHERE u.email = ?
+            """,
+            label,
+            merchantCode,
+            paymentMethod,
+            instrumentType,
+            cardNumberMasked,
+            cardHolderName,
+            upiId,
+            bankAccountMasked,
+            bankIfsc,
+            debitAmount,
+            maxAmount,
+            currency,
+            frequency,
+            status,
+            customerEmail
         );
         }
 

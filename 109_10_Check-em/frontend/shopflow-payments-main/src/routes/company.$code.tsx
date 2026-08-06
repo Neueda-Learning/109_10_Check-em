@@ -1,5 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, Search } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Loader2,
+  Search,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,10 +22,12 @@ import { downloadCompanyPaymentsPdf } from "@/lib/pdf";
 import {
   companyVisualsByCode,
   companyCodeToLabel,
+  fetchMerchantAutopayCustomers,
   fetchMerchantSettings,
   fetchMerchantPayments,
   fmt,
   updateMerchantSettings,
+  type ApiAutopayCustomer,
   type ApiPayment,
   type Currency,
   type MerchantSettings,
@@ -26,6 +37,21 @@ export const Route = createFileRoute("/company/$code")({
   component: CompanyDashboard,
 });
 
+const STATUS_RANK: Record<string, number> = {
+  INITIATED: 0,
+  PENDING: 1,
+  FAILED: 2,
+  REVERSED: 3,
+  SUCCESS: 4,
+};
+
+const METHOD_RANK: Record<string, number> = {
+  CARD: 0,
+  UPI: 1,
+  BANK_TRANSFER: 2,
+  WALLET: 3,
+};
+
 function CompanyDashboard() {
   const { code } = Route.useParams();
   const [payments, setPayments] = useState<ApiPayment[]>([]);
@@ -33,63 +59,60 @@ function CompanyDashboard() {
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [autopayCustomers, setAutopayCustomers] = useState<ApiAutopayCustomer[]>([]);
+  const [autopayCustomersLoading, setAutopayCustomersLoading] = useState(true);
+  const [autopayCustomersOpen, setAutopayCustomersOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [autopaySaving, setAutopaySaving] = useState(false);
-  const [sortBy, setSortBy] = useState<"id" | "customer" | "method" | "currency" | "status" | "amount">("id");
+  const [sortBy, setSortBy] = useState<
+    "id" | "customer" | "method" | "currency" | "status" | "amount"
+  >("id");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  const statusRank: Record<string, number> = {
-    INITIATED: 0,
-    PENDING: 1,
-    FAILED: 2,
-    REVERSED: 3,
-    SUCCESS: 4,
-  };
-  const methodRank: Record<string, number> = {
-    CARD: 0,
-    UPI: 1,
-    BANK_TRANSFER: 2,
-    WALLET: 3,
-  };
 
   const compareText = (left: string, right: string) => left.localeCompare(right);
   const compareRank = (left: number, right: number) => left - right;
 
   useEffect(() => {
-  setError("");
-  setPaymentsLoading(true);
-  setSettingsLoading(true);
+    setError("");
+    setPaymentsLoading(true);
+    setSettingsLoading(true);
+    setAutopayCustomersLoading(true);
 
-  fetchMerchantPayments(code)
-    .then(setPayments)
-    .catch((e) => {
-      setError(e instanceof Error ? e.message : "Unable to load merchant dashboard");
-    })
-    .finally(() => setPaymentsLoading(false));
+    fetchMerchantPayments(code)
+      .then(setPayments)
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Unable to load merchant dashboard");
+      })
+      .finally(() => setPaymentsLoading(false));
 
-  fetchMerchantSettings(code)
-    .then(setSettings)
-    .finally(() => setSettingsLoading(false));
-}, [code]);
+    fetchMerchantSettings(code)
+      .then(setSettings)
+      .finally(() => setSettingsLoading(false));
+
+    fetchMerchantAutopayCustomers(code)
+      .then(setAutopayCustomers)
+      .catch(() => setAutopayCustomers([]))
+      .finally(() => setAutopayCustomersLoading(false));
+  }, [code]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = !q
       ? payments
       : payments.filter((p) =>
-      [
-        String(p.id),
-        p.idempotencyKey,
-        p.customer?.name ?? "",
-        p.customer?.email ?? "",
-        p.currency,
-        p.paymentMethod,
-        p.status,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
-    );
+          [
+            String(p.id),
+            p.idempotencyKey,
+            p.customer?.name ?? "",
+            p.customer?.email ?? "",
+            p.currency,
+            p.paymentMethod,
+            p.status,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(q),
+        );
 
     const sorted = [...list].sort((a, b) => {
       const direction = sortDir === "asc" ? 1 : -1;
@@ -102,9 +125,12 @@ function CompanyDashboard() {
         return compareText(a.currency ?? "", b.currency ?? "") * direction;
       }
       if (sortBy === "method") {
-        return compareRank(methodRank[a.paymentMethod] ?? 99, methodRank[b.paymentMethod] ?? 99) * direction;
+        return (
+          compareRank(METHOD_RANK[a.paymentMethod] ?? 99, METHOD_RANK[b.paymentMethod] ?? 99) *
+          direction
+        );
       }
-      return compareRank(statusRank[a.status] ?? 99, statusRank[b.status] ?? 99) * direction;
+      return compareRank(STATUS_RANK[a.status] ?? 99, STATUS_RANK[b.status] ?? 99) * direction;
     });
 
     return sorted;
@@ -194,7 +220,9 @@ function CompanyDashboard() {
             <p className="text-xs text-muted-foreground">
               If turned off, checkout will not allow customers to save instruments for autopay.
             </p>
-            {settingsLoading && <p className="mt-1 text-[11px] text-muted-foreground">Loading settings...</p>}
+            {settingsLoading && (
+              <p className="mt-1 text-[11px] text-muted-foreground">Loading settings...</p>
+            )}
           </div>
           <Switch
             checked={Boolean(settings?.autopayEnabled)}
@@ -243,6 +271,112 @@ function CompanyDashboard() {
           </div>
         </div>
 
+        <div className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-card">
+          {!settings?.autopayEnabled ? (
+            <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-muted-foreground">
+              Autopay is disabled for this merchant. Enable it to view customers who opt in.
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setAutopayCustomersOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between rounded-xl border border-border bg-secondary/60 px-3 py-2 text-left"
+              >
+                <div>
+                  <h2 className="text-base font-semibold">Customers opted for Autopay</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Click to {autopayCustomersOpen ? "hide" : "view"} customers and mandate details.
+                  </p>
+                </div>
+                {autopayCustomersOpen ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+
+              {autopayCustomersOpen && (
+                <>
+                  {autopayCustomersLoading ? (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      Loading autopay customers...
+                    </p>
+                  ) : autopayCustomers.length === 0 ? (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      No customers have opted for autopay in this company yet.
+                    </p>
+                  ) : (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-secondary text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">Customer</th>
+                            <th className="px-3 py-2">Contact</th>
+                            <th className="px-3 py-2">Latest Order</th>
+                            <th className="px-3 py-2 text-right">Mandates</th>
+                            <th className="px-3 py-2 text-right">Active</th>
+                            <th className="px-3 py-2 text-right">Paused</th>
+                            <th className="px-3 py-2 text-right">Total Debit</th>
+                            <th className="px-3 py-2 text-right">Total Cap</th>
+                            <th className="px-3 py-2">Last Updated</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {autopayCustomers.map((customer, index) => (
+                            <tr
+                              key={customer.customerId}
+                              className={`border-t border-border ${rowShadeClasses[index % rowShadeClasses.length]}`}
+                            >
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{customer.customerName}</p>
+                                <p className="mono text-[11px] text-muted-foreground">
+                                  ID: {customer.customerId}
+                                </p>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-muted-foreground">
+                                <p>{customer.customerEmail}</p>
+                                <p>{customer.customerPhone || "N/A"}</p>
+                              </td>
+                              <td className="mono px-3 py-2 text-xs text-muted-foreground">
+                                {customer.latestOrderId || "N/A"}
+                              </td>
+                              <td className="mono px-3 py-2 text-right">{customer.mandateCount}</td>
+                              <td className="mono px-3 py-2 text-right text-success">
+                                {customer.activeMandates}
+                              </td>
+                              <td className="mono px-3 py-2 text-right">
+                                {customer.pausedMandates}
+                              </td>
+                              <td className="mono px-3 py-2 text-right">
+                                {fmt(
+                                  customer.totalDebitAmount,
+                                  (settings?.currency ?? "INR") as Currency,
+                                )}
+                              </td>
+                              <td className="mono px-3 py-2 text-right">
+                                {fmt(
+                                  customer.totalMaxAmount,
+                                  (settings?.currency ?? "INR") as Currency,
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-muted-foreground">
+                                {customer.lastUpdatedAt
+                                  ? new Date(customer.lastUpdatedAt).toLocaleString()
+                                  : "N/A"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+
         {paymentsLoading ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading payments...
@@ -257,12 +391,43 @@ function CompanyDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-secondary text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <SortHeader label="Payment" active={sortBy === "id"} dir={sortDir} onClick={() => setSort("id")} />
-                  <SortHeader label="Customer" active={sortBy === "customer"} dir={sortDir} onClick={() => setSort("customer")} />
-                  <SortHeader label="Mode" active={sortBy === "method"} dir={sortDir} onClick={() => setSort("method")} />
-                  <SortHeader label="Currency" active={sortBy === "currency"} dir={sortDir} onClick={() => setSort("currency")} />
-                  <SortHeader label="Status" active={sortBy === "status"} dir={sortDir} onClick={() => setSort("status")} />
-                  <SortHeader label="Amount" active={sortBy === "amount"} dir={sortDir} onClick={() => setSort("amount")} alignRight />
+                  <SortHeader
+                    label="Payment"
+                    active={sortBy === "id"}
+                    dir={sortDir}
+                    onClick={() => setSort("id")}
+                  />
+                  <SortHeader
+                    label="Customer"
+                    active={sortBy === "customer"}
+                    dir={sortDir}
+                    onClick={() => setSort("customer")}
+                  />
+                  <SortHeader
+                    label="Mode"
+                    active={sortBy === "method"}
+                    dir={sortDir}
+                    onClick={() => setSort("method")}
+                  />
+                  <SortHeader
+                    label="Currency"
+                    active={sortBy === "currency"}
+                    dir={sortDir}
+                    onClick={() => setSort("currency")}
+                  />
+                  <SortHeader
+                    label="Status"
+                    active={sortBy === "status"}
+                    dir={sortDir}
+                    onClick={() => setSort("status")}
+                  />
+                  <SortHeader
+                    label="Amount"
+                    active={sortBy === "amount"}
+                    dir={sortDir}
+                    onClick={() => setSort("amount")}
+                    alignRight
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -337,7 +502,15 @@ function SortHeader({
         onClick={onClick}
       >
         <span>{label}</span>
-        {active ? dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUpDown className="h-3.5 w-3.5" />}
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5" />
+        )}
       </button>
     </th>
   );

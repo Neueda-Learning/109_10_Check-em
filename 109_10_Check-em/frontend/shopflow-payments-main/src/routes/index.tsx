@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, CreditCard, Loader2 } from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,8 +20,10 @@ import { Label } from "@/components/ui/label";
 import {
   companyVisualsByCode,
   createMerchant,
+  deleteMerchant,
   fetchDashboardMerchants,
   fmt,
+  updateMerchant,
   type ApiDashboardMerchant,
   type Currency,
 } from "@/lib/gateway";
@@ -48,7 +50,17 @@ function Dashboard() {
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState("");
-  const [ownerUserId, setOwnerUserId] = useState("1");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editingMerchant, setEditingMerchant] = useState<ApiDashboardMerchant | null>(null);
+  const [editBusinessName, setEditBusinessName] = useState("");
+  const [editCurrency, setEditCurrency] = useState("INR");
+  const [editAutopayEnabled, setEditAutopayEnabled] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingMerchant, setDeletingMerchant] = useState<ApiDashboardMerchant | null>(null);
   const [businessName, setBusinessName] = useState("");
   const [merchantCode, setMerchantCode] = useState("");
   const [currency, setCurrency] = useState("INR");
@@ -71,11 +83,6 @@ function Dashboard() {
   }, []);
 
   const submitMerchant = async () => {
-    const parsedUserId = Number(ownerUserId);
-    if (!Number.isFinite(parsedUserId) || parsedUserId <= 0) {
-      setAddError("Owner user ID must be a positive number.");
-      return;
-    }
     if (businessName.trim().length < 2) {
       setAddError("Business name must be at least 2 characters.");
       return;
@@ -93,7 +100,6 @@ function Dashboard() {
     setAddError("");
     try {
       await createMerchant({
-        userId: parsedUserId,
         businessName,
         merchantCode,
         currency,
@@ -103,13 +109,80 @@ function Dashboard() {
       setBusinessName("");
       setMerchantCode("");
       setCurrency("INR");
-      window.location.reload();
+      await loadMerchants();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Unable to add merchant";
       setAddError(message);
       toast.error(message);
     } finally {
       setAddBusy(false);
+    }
+  };
+
+  const openEdit = (merchant: ApiDashboardMerchant) => {
+    setEditingMerchant(merchant);
+    setEditBusinessName(merchant.businessName);
+    setEditCurrency(merchant.currency || "INR");
+    setEditAutopayEnabled(merchant.autopayEnabled);
+    setEditError("");
+    setEditOpen(true);
+  };
+
+  const submitEdit = async () => {
+    if (!editingMerchant) return;
+    if (editBusinessName.trim().length < 2) {
+      setEditError("Business name must be at least 2 characters.");
+      return;
+    }
+    if (!/^[A-Za-z]{3}$/.test(editCurrency.trim())) {
+      setEditError("Currency must be a 3-letter code, e.g. INR.");
+      return;
+    }
+
+    setEditBusy(true);
+    setEditError("");
+    try {
+      await updateMerchant({
+        merchantId: editingMerchant.merchantId,
+        businessName: editBusinessName,
+        currency: editCurrency,
+        autopayEnabled: editAutopayEnabled,
+      });
+      toast.success("Merchant updated.");
+      setEditOpen(false);
+      setEditingMerchant(null);
+      await loadMerchants();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unable to update merchant";
+      setEditError(message);
+      toast.error(message);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const openDelete = (merchant: ApiDashboardMerchant) => {
+    setDeletingMerchant(merchant);
+    setDeleteError("");
+    setDeleteOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingMerchant) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await deleteMerchant(deletingMerchant.merchantId);
+      toast.success("Merchant deleted.");
+      setDeleteOpen(false);
+      setDeletingMerchant(null);
+      await loadMerchants();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unable to delete merchant";
+      setDeleteError(message);
+      toast.error(message);
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -146,15 +219,6 @@ function Dashboard() {
                 </DialogHeader>
 
                 <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ownerUserId">Owner user ID</Label>
-                    <Input
-                      id="ownerUserId"
-                      value={ownerUserId}
-                      onChange={(e) => setOwnerUserId(e.target.value.replace(/\D/g, ""))}
-                      placeholder="1"
-                    />
-                  </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="businessName">Business name</Label>
                     <Input
@@ -284,12 +348,120 @@ function Dashboard() {
                         <CreditCard className="h-4 w-4" /> Gateway checkout
                       </Link>
                     </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="secondary" onClick={() => openEdit(merchant)}>
+                        <Pencil className="h-4 w-4" /> Edit
+                      </Button>
+                      <Button variant="destructive" onClick={() => openDelete(merchant)}>
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+
+        <Dialog
+          open={editOpen}
+          onOpenChange={(next) => {
+            setEditOpen(next);
+            if (!next) {
+              setEditingMerchant(null);
+              setEditError("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Merchant</DialogTitle>
+              <DialogDescription>
+                Update company details for{" "}
+                {editingMerchant?.merchantCode
+                  ? `${editingMerchant.merchantCode}`
+                  : "this merchant"}
+                .
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="editBusinessName">Business name</Label>
+                <Input
+                  id="editBusinessName"
+                  value={editBusinessName}
+                  onChange={(e) => setEditBusinessName(e.target.value)}
+                  placeholder="Example Retail Pvt Ltd"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="editCurrency">Currency</Label>
+                <Input
+                  id="editCurrency"
+                  value={editCurrency}
+                  onChange={(e) => setEditCurrency(e.target.value.toUpperCase())}
+                  placeholder="INR"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="editAutopay">Autopay enabled</Label>
+                <select
+                  id="editAutopay"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={editAutopayEnabled ? "yes" : "no"}
+                  onChange={(e) => setEditAutopayEnabled(e.target.value === "yes")}
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              {editError && <p className="text-xs text-destructive">{editError}</p>}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editBusy}>
+                Cancel
+              </Button>
+              <Button onClick={submitEdit} disabled={editBusy}>
+                {editBusy ? "Saving..." : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={deleteOpen}
+          onOpenChange={(next) => {
+            setDeleteOpen(next);
+            if (!next) {
+              setDeletingMerchant(null);
+              setDeleteError("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Merchant</DialogTitle>
+              <DialogDescription>
+                This will permanently remove{" "}
+                {deletingMerchant?.businessName || "the selected merchant"}. This action cannot be
+                undone.
+              </DialogDescription>
+            </DialogHeader>
+
+            {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleteBusy}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deleteBusy}>
+                {deleteBusy ? "Deleting..." : "Delete merchant"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="mt-12 border-t border-border pt-6">
           <SecurityStrip />

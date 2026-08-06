@@ -129,9 +129,13 @@ function MethodStep() {
       setInstrumentError("Enter a valid bank name.");
       return;
     }
+    if (draft.autopay && draft.subscriptionLabel.trim().length < 3) {
+      setInstrumentError("Enter a subscription name with at least 3 characters.");
+      return;
+    }
     setInstrumentError(null);
     if (!autopayAllowed && draft.autopay) {
-      patch({ autopay: false });
+      patch({ autopay: false, subscriptionLabel: "" });
     }
     navigate({ to: "/pay/charity" });
   };
@@ -282,20 +286,43 @@ function MethodStep() {
 
             <div className="mt-5 flex items-start justify-between gap-4 rounded-xl bg-secondary p-4">
               <div>
-                <p className="text-sm font-semibold">Save this instrument for Autopay</p>
+                <p className="text-sm font-semibold">
+                  Would you like to enable autopay for this subscription?
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {autopayAllowed
-                    ? "Creates a mandate so future orders are charged automatically, within a cap you set."
+                    ? "If enabled, this checkout creates a subscription mandate for future debits on this instrument."
                     : "Autopay is disabled by this company. One-time payments are still enabled."}
                 </p>
               </div>
               <Switch
                 checked={draft.autopay}
                 disabled={!autopayAllowed}
-                onCheckedChange={(v) => patch({ autopay: v })}
+                onCheckedChange={(v) =>
+                  patch({
+                    autopay: v,
+                    subscriptionLabel: v ? draft.subscriptionLabel : "",
+                  })
+                }
                 aria-label="Enable autopay"
               />
             </div>
+
+            {autopayAllowed && draft.autopay && (
+              <div className="mt-4 space-y-1.5">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Subscription name
+                </Label>
+                <Input
+                  value={draft.subscriptionLabel}
+                  onChange={(e) => patch({ subscriptionLabel: e.target.value })}
+                  placeholder="Monthly premium plan"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  This subscription will be linked to order {draft.orderId}.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

@@ -48,7 +48,10 @@ export const Route = createFileRoute("/gateway")({
 function CheckoutStart() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const orderItems = useMemo(() => getOrderItemsForMerchant(search.merchantCode), [search.merchantCode]);
+  const orderItems = useMemo(
+    () => getOrderItemsForMerchant(search.merchantCode),
+    [search.merchantCode],
+  );
   const subtotal = useMemo(
     () => orderItems.reduce((sum, item) => sum + item.inr * item.qty, 0),
     [orderItems],
@@ -79,6 +82,7 @@ function CheckoutStart() {
           currency: storeCurrency,
           autopayAllowed: settings.autopayEnabled,
           autopay: settings.autopayEnabled ? prev.autopay : false,
+          subscriptionLabel: settings.autopayEnabled ? prev.subscriptionLabel : "",
           fxChargeInr: 0,
           fxConsentAccepted: false,
         }));
@@ -130,7 +134,9 @@ function CheckoutStart() {
     >
       <div className="space-y-6">
         {loadingSettings && (
-          <p className="text-sm text-muted-foreground">Loading company currency and autopay settings...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading company currency and autopay settings...
+          </p>
         )}
         <div className="grid-hero rounded-2xl border border-border bg-card p-6 shadow-card">
           <div className="mb-4 rounded-xl border border-primary/40 bg-accent p-3 text-sm">
@@ -193,7 +199,8 @@ function CheckoutStart() {
 
           {!draft.autopayAllowed && (
             <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
-              Autopay is currently disabled for this company. You can still complete one-time payments.
+              Autopay is currently disabled for this company. You can still complete one-time
+              payments.
             </div>
           )}
 

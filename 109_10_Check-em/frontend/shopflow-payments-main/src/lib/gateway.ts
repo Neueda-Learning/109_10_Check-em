@@ -105,6 +105,7 @@ export interface Draft {
   charityCause: string | null;
   customer: { name: string; email: string; phone: string };
   autopay: boolean;
+  subscriptionLabel: string;
   autopayAllowed: boolean;
   forceFailure: boolean;
   fxChargeInr: number;
@@ -235,6 +236,7 @@ export function newDraft(amountInr: number): Draft {
     charityCause: null,
     customer: { name: "", email: "", phone: "" },
     autopay: false,
+    subscriptionLabel: "",
     autopayAllowed: true,
     forceFailure: false,
     fxChargeInr: 0,
@@ -248,6 +250,7 @@ export function getDraft(): Draft | null {
   return {
     ...raw,
     storeCurrency: raw.storeCurrency ?? "INR",
+    subscriptionLabel: raw.subscriptionLabel ?? "",
     autopayAllowed: raw.autopayAllowed ?? true,
     fxChargeInr: raw.fxChargeInr ?? 0,
     fxConsentAccepted: raw.fxConsentAccepted ?? false,
@@ -409,6 +412,7 @@ export interface ApiUser {
   name: string;
   email: string;
   phone?: string;
+  accountBalance?: number;
 }
 
 export interface ApiMerchant {
@@ -438,6 +442,9 @@ export interface ApiDashboardMerchant {
 export interface ApiPayment {
   id: number;
   idempotencyKey: string;
+  orderId?: string;
+  autopayOptIn?: boolean;
+  subscriptionLabel?: string;
   customer: ApiUser;
   merchant: ApiMerchant;
   amount: number;
@@ -493,6 +500,20 @@ export interface MerchantSettings {
   autopayEnabled: boolean;
 }
 
+export interface ApiAutopayCustomer {
+  customerId: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string | null;
+  mandateCount: number;
+  activeMandates: number;
+  pausedMandates: number;
+  totalDebitAmount: number;
+  totalMaxAmount: number;
+  latestOrderId: string | null;
+  lastUpdatedAt: string | null;
+}
+
 export interface ApiBankNode {
   id: number;
   bankCode: string;
@@ -546,7 +567,9 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     clearTimeout(timeout);
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Backend request timed out. Check that the Payflow backend is running on http://localhost:8080.");
+      throw new Error(
+        "Backend request timed out. Check that the Payflow backend is running on http://localhost:8080.",
+      );
     }
     throw error;
   }
@@ -562,7 +585,26 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(message);
   }
-  return (await res.json()) as T;
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    return (await res.json()) as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as T;
+  }
 }
 
 export const companyCodeToLabel: Record<string, string> = {
@@ -609,18 +651,39 @@ export async function fetchMerchants() {
 }
 
 export async function createMerchant(input: {
-  userId: number;
+  userId?: number;
   businessName: string;
   merchantCode: string;
   currency: string;
 }) {
-  const params = new URLSearchParams({
-    userId: String(input.userId),
-    businessName: input.businessName.trim(),
-    merchantCode: input.merchantCode.trim().toUpperCase(),
-    currency: input.currency.trim().toUpperCase(),
-  });
+  const params = new URLSearchParams();
+  if (typeof input.userId === "number" && Number.isFinite(input.userId) && input.userId > 0) {
+    params.set("userId", String(input.userId));
+  }
+  params.set("businessName", input.businessName.trim());
+  params.set("merchantCode", input.merchantCode.trim().toUpperCase());
+  params.set("currency", input.currency.trim().toUpperCase());
   return api<ApiMerchant>(`/api/merchants?${params.toString()}`, { method: "POST" });
+}
+
+export async function updateMerchant(input: {
+  merchantId: number;
+  businessName: string;
+  currency: string;
+  autopayEnabled?: boolean;
+}) {
+  return api<ApiMerchant>(`/api/merchants/${input.merchantId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      businessName: input.businessName.trim(),
+      currency: input.currency.trim().toUpperCase(),
+      autopayEnabled: input.autopayEnabled,
+    }),
+  });
+}
+
+export async function deleteMerchant(merchantId: number) {
+  return api<string>(`/api/merchants/${merchantId}`, { method: "DELETE" });
 }
 
 export async function fetchDashboardMerchants() {
@@ -636,6 +699,10 @@ export async function verifyMerchantPin(merchantCode: string, pin: string) {
 
 export async function fetchMerchantSettings(merchantCode: string) {
   return api<MerchantSettings>(`/api/merchants/code/${merchantCode}/settings`);
+}
+
+export async function fetchMerchantAutopayCustomers(merchantCode: string) {
+  return api<ApiAutopayCustomer[]>(`/api/merchants/code/${merchantCode}/autopay-customers`);
 }
 
 export async function updateMerchantSettings(input: {
@@ -696,11 +763,17 @@ export async function fetchPaymentBalanceCheck(paymentId: number) {
 
 export async function createBackendPayment(input: {
   idempotencyKey: string;
+  orderId: string;
   merchantCode: string;
   amount: number;
   currency: string;
   paymentMethod: MethodId;
   customerSeed: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  autopayOptIn: boolean;
+  subscriptionLabel?: string;
   description: string;
 }) {
   const seededCustomerId =
@@ -725,6 +798,12 @@ export async function createBackendPayment(input: {
       amount: input.amount,
       currency: input.currency,
       paymentMethod: method,
+      orderId: input.orderId,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      autopayOptIn: input.autopayOptIn,
+      subscriptionLabel: input.subscriptionLabel,
       description: input.description,
     }),
   });

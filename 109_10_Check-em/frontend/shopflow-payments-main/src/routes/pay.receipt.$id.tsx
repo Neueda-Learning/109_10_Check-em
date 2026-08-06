@@ -73,9 +73,13 @@ function Receipt() {
             {fmt(payment.amount, payment.currency as Currency)}
           </p>
           <div className="mt-4 space-y-2 border-t border-border pt-4 text-xs">
+            <Row label="Order ID" value={payment.orderId ?? "-"} />
             <Row label="Payment ID" value={String(payment.id)} />
             <Row label="Idempotency key" value={payment.idempotencyKey} />
             <Row label="Customer" value={payment.customer?.name ?? "-"} />
+            <Row label="Customer email" value={payment.customer?.email ?? "-"} />
+            <Row label="Customer phone" value={payment.customer?.phone ?? "-"} />
+          
             <Row label="Merchant" value={payment.merchant?.businessName ?? "-"} />
           </div>
           <Button

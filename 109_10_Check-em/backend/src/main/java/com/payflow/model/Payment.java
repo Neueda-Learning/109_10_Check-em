@@ -16,6 +16,12 @@ public class Payment {
     private PaymentMethod paymentMethod;
     private PaymentStatus status = PaymentStatus.INITIATED;
     private String description;
+    private String orderId;
+    private String customerName;
+    private String customerEmail;
+    private String customerPhone;
+    private boolean autopayOptIn;
+    private String subscriptionLabel;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -89,6 +95,54 @@ public class Payment {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
+    }
+
+    public String getCustomerEmail() {
+        return customerEmail;
+    }
+
+    public void setCustomerEmail(String customerEmail) {
+        this.customerEmail = customerEmail;
+    }
+
+    public String getCustomerPhone() {
+        return customerPhone;
+    }
+
+    public void setCustomerPhone(String customerPhone) {
+        this.customerPhone = customerPhone;
+    }
+
+    public boolean isAutopayOptIn() {
+        return autopayOptIn;
+    }
+
+    public void setAutopayOptIn(boolean autopayOptIn) {
+        this.autopayOptIn = autopayOptIn;
+    }
+
+    public String getSubscriptionLabel() {
+        return subscriptionLabel;
+    }
+
+    public void setSubscriptionLabel(String subscriptionLabel) {
+        this.subscriptionLabel = subscriptionLabel;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -1,5 +1,6 @@
 package com.payflow.controller;
 
+import com.payflow.dto.AutopayCustomerResponse;
 import com.payflow.dto.AuthPinRequest;
 import com.payflow.dto.DashboardMerchantResponse;
 import com.payflow.dto.MerchantSettingsResponse;
@@ -28,7 +29,7 @@ public class MerchantController {
     // CREATE
     @PostMapping
     public ResponseEntity<Merchant> createMerchant(
-            @RequestParam Long userId,
+            @RequestParam(required = false) Long userId,
             @RequestParam @NotBlank @Pattern(regexp = "^.{2,255}$", message = "businessName must be between 2 and 255 characters") String businessName,
             @RequestParam @NotBlank @Pattern(regexp = "^[A-Z0-9]{3,12}$", message = "merchantCode must be 3-12 uppercase letters/numbers") String merchantCode,
             @RequestParam(required = false) @Pattern(regexp = "^[A-Z]{3}$", message = "currency must be a 3-letter ISO code") String currency) {
@@ -62,6 +63,12 @@ public class MerchantController {
     @GetMapping("/code/{merchantCode}/settings")
     public ResponseEntity<MerchantSettingsResponse> getSettings(@PathVariable String merchantCode) {
         return ResponseEntity.ok(merchantService.getSettings(merchantCode));
+    }
+
+    @GetMapping("/code/{merchantCode}/autopay-customers")
+    public ResponseEntity<List<AutopayCustomerResponse>> getAutopayCustomers(
+            @PathVariable @Pattern(regexp = "^[A-Z0-9]{3,12}$", message = "merchantCode must be 3-12 uppercase letters/numbers") String merchantCode) {
+        return ResponseEntity.ok(merchantService.getAutopayCustomers(merchantCode));
     }
 
     @PostMapping("/code/{merchantCode}/auth-pin")

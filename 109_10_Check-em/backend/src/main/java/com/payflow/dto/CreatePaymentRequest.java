@@ -36,6 +36,23 @@ public class CreatePaymentRequest {
     @Size(max = 255, message = "description must be at most 255 characters")
     private String description;
 
+    @Size(max = 100, message = "orderId must be at most 100 characters")
+    private String orderId;
+
+    @Size(max = 120, message = "customerName must be at most 120 characters")
+    private String customerName;
+
+    @Size(max = 255, message = "customerEmail must be at most 255 characters")
+    private String customerEmail;
+
+    @Size(max = 25, message = "customerPhone must be at most 25 characters")
+    private String customerPhone;
+
+    private Boolean autopayOptIn;
+
+    @Size(max = 255, message = "subscriptionLabel must be at most 255 characters")
+    private String subscriptionLabel;
+
     public String getIdempotencyKey() {
         return idempotencyKey;
     }
@@ -90,5 +107,53 @@ public class CreatePaymentRequest {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(String orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getCustomerName() {
+        return customerName;
+    }
+
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
+    }
+
+    public String getCustomerEmail() {
+        return customerEmail;
+    }
+
+    public void setCustomerEmail(String customerEmail) {
+        this.customerEmail = customerEmail;
+    }
+
+    public String getCustomerPhone() {
+        return customerPhone;
+    }
+
+    public void setCustomerPhone(String customerPhone) {
+        this.customerPhone = customerPhone;
+    }
+
+    public Boolean getAutopayOptIn() {
+        return autopayOptIn;
+    }
+
+    public void setAutopayOptIn(Boolean autopayOptIn) {
+        this.autopayOptIn = autopayOptIn;
+    }
+
+    public String getSubscriptionLabel() {
+        return subscriptionLabel;
+    }
+
+    public void setSubscriptionLabel(String subscriptionLabel) {
+        this.subscriptionLabel = subscriptionLabel;
     }
 }

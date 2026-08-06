@@ -108,7 +108,18 @@ function PaymentDetail() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
           <div className="space-y-4 rounded-2xl border border-border bg-card p-5 text-xs shadow-card">
+            <Row label="Order ID" value={payment.orderId ?? "-"} />
             <Row label="Idempotency key" value={payment.idempotencyKey} />
+            <Row label="Customer email" value={payment.customer?.email ?? "-"} />
+            <Row label="Customer phone" value={payment.customer?.phone ?? "-"} />
+            <Row
+              label="Account balance"
+              value={
+                typeof payment.customer?.accountBalance === "number"
+                  ? `INR ${payment.customer.accountBalance.toFixed(2)}`
+                  : "INR 0.00"
+              }
+            />
             <Row label="Method" value={payment.paymentMethod} />
             <Row label="Currency" value={payment.currency} />
             <Row label="Status" value={payment.status} />

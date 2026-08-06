@@ -24,11 +24,17 @@ function VerifyStep() {
 
     createBackendPayment({
       idempotencyKey: draft.idempotencyKey,
+      orderId: draft.orderId,
       merchantCode: draft.merchantCode,
       amount: Number((draft.amountInr + draft.charityInr + (draft.fxChargeInr ?? 0)).toFixed(2)),
       currency: draft.currency,
       paymentMethod: draft.method ?? "card",
       customerSeed: draft.customer.email,
+      customerName: draft.customer.name,
+      customerEmail: draft.customer.email,
+      customerPhone: draft.customer.phone,
+      autopayOptIn: draft.autopay,
+      subscriptionLabel: draft.autopay ? draft.subscriptionLabel : undefined,
       description: `Checkout for ${draft.merchantName}`,
     })
       .then((payment) => {

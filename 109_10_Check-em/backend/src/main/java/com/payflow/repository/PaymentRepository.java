@@ -13,7 +13,6 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,14 +37,22 @@ public class PaymentRepository {
         p.setPaymentMethod(PaymentMethod.valueOf(rs.getString("payment_method")));
         p.setStatus(PaymentStatus.valueOf(rs.getString("status")));
         p.setDescription(rs.getString("description"));
+        p.setOrderId(rs.getString("order_id"));
+        p.setCustomerName(rs.getString("customer_name"));
+        p.setCustomerEmail(rs.getString("customer_email"));
+        p.setCustomerPhone(rs.getString("customer_phone"));
+        p.setAutopayOptIn(rs.getBoolean("autopay_opt_in"));
+        p.setSubscriptionLabel(rs.getString("subscription_label"));
         Timestamp created = rs.getTimestamp("created_at");
         if (created != null) p.setCreatedAt(created.toLocalDateTime());
         Timestamp updated = rs.getTimestamp("updated_at");
         if (updated != null) p.setUpdatedAt(updated.toLocalDateTime());
         User customer = new User();
         customer.setId(rs.getLong("customer_id"));
-        customer.setName(rs.getString("c_name"));
-        customer.setEmail(rs.getString("c_email"));
+        customer.setName(rs.getString("customer_name") != null ? rs.getString("customer_name") : rs.getString("c_name"));
+        customer.setEmail(rs.getString("customer_email") != null ? rs.getString("customer_email") : rs.getString("c_email"));
+        customer.setPhone(rs.getString("customer_phone") != null ? rs.getString("customer_phone") : rs.getString("c_phone"));
+        customer.setAccountBalance(rs.getBigDecimal("c_account_balance"));
         customer.setRole(Role.CUSTOMER);
         p.setCustomer(customer);
         Merchant merchant = new Merchant();
@@ -53,14 +60,15 @@ public class PaymentRepository {
         merchant.setBusinessName(rs.getString("m_business_name"));
         merchant.setMerchantCode(rs.getString("m_merchant_code"));
         merchant.setCurrency(rs.getString("m_currency"));
+        merchant.setAutopayEnabled(rs.getBoolean("m_autopay_enabled"));
         p.setMerchant(merchant);
         return p;
     };
 
     private static final String BASE_SELECT =
         "SELECT p.*, " +
-        "c.name AS c_name, c.email AS c_email, " +
-        "m.business_name AS m_business_name, m.merchant_code AS m_merchant_code, m.currency AS m_currency " +
+        "c.name AS c_name, c.email AS c_email, c.phone AS c_phone, c.account_balance AS c_account_balance, " +
+        "m.business_name AS m_business_name, m.merchant_code AS m_merchant_code, m.currency AS m_currency, m.autopay_enabled AS m_autopay_enabled " +
         "FROM payments p " +
         "JOIN users c ON p.customer_id = c.id " +
         "JOIN merchants m ON p.merchant_id = m.id ";
@@ -68,8 +76,8 @@ public class PaymentRepository {
     public Payment save(Payment payment) {
         String sql = "INSERT INTO payments " +
                 "(idempotency_key, customer_id, merchant_id, amount, currency, " +
-                "payment_method, status, description) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                "payment_method, status, description, order_id, customer_name, customer_email, customer_phone, autopay_opt_in, subscription_label) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, new String[]{"id"});
@@ -81,10 +89,76 @@ public class PaymentRepository {
             ps.setString(6, payment.getPaymentMethod().name());
             ps.setString(7, payment.getStatus().name());
             ps.setString(8, payment.getDescription());
+            ps.setString(9, payment.getOrderId());
+            ps.setString(10, payment.getCustomerName());
+            ps.setString(11, payment.getCustomerEmail());
+            ps.setString(12, payment.getCustomerPhone());
+            ps.setBoolean(13, payment.isAutopayOptIn());
+            ps.setString(14, payment.getSubscriptionLabel());
             return ps;
         }, keyHolder);
         payment.setId(keyHolder.getKey().longValue());
         return payment;
+    }
+
+    public void createAutopayMandateFromPayment(Payment payment) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM autopay_mandates WHERE merchant_code = ? AND customer_id = ? AND COALESCE(order_id, '') = COALESCE(?, '')",
+                Integer.class,
+                payment.getMerchant().getMerchantCode(),
+                payment.getCustomer().getId(),
+                payment.getOrderId()
+        );
+        if (count != null && count > 0) {
+            return;
+        }
+
+        jdbc.update(
+                """
+                INSERT INTO autopay_mandates (
+                    label,
+                    merchant_code,
+                    customer_id,
+                    payment_method,
+                    instrument_type,
+                    card_number_masked,
+                    card_holder_name,
+                    upi_id,
+                    bank_account_masked,
+                    bank_ifsc,
+                    debit_amount,
+                    max_amount,
+                    currency,
+                    frequency,
+                    status,
+                    order_id,
+                    customer_name,
+                    customer_email,
+                    customer_phone
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                payment.getSubscriptionLabel() != null && !payment.getSubscriptionLabel().isBlank()
+                        ? payment.getSubscriptionLabel().trim()
+                        : "Subscription " + (payment.getOrderId() != null ? payment.getOrderId() : payment.getId()),
+                payment.getMerchant().getMerchantCode(),
+                payment.getCustomer().getId(),
+                payment.getPaymentMethod().name(),
+                payment.getPaymentMethod().name(),
+                null,
+                payment.getCustomerName(),
+                null,
+                null,
+                null,
+                payment.getAmount(),
+                payment.getAmount().multiply(new java.math.BigDecimal("2")),
+                payment.getCurrency(),
+                "MONTHLY",
+                "ACTIVE",
+                payment.getOrderId(),
+                payment.getCustomerName(),
+                payment.getCustomerEmail(),
+                payment.getCustomerPhone()
+        );
     }
 
     public void updateStatus(Long id, PaymentStatus status) {

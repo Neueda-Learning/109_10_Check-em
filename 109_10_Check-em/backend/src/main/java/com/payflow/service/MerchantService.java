@@ -1,7 +1,9 @@
 package com.payflow.service;
 
+import com.payflow.dto.AutopayCustomerResponse;
 import com.payflow.dto.MerchantSettingsResponse;
 import com.payflow.dto.DashboardMerchantResponse;
+import com.payflow.enums.Role;
 import com.payflow.exception.BadRequestException;
 import com.payflow.dto.UpdateMerchantRequest;
 import com.payflow.exception.ProcessingException;
@@ -51,8 +53,10 @@ public class MerchantService {
 
     public Merchant createMerchant(Long userId, String businessName,
                                    String merchantCode, String currency) {
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        User user = userId != null
+                ? userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId))
+                : resolveOrCreateMerchantOwner(merchantCode, businessName);
         Merchant merchant = new Merchant();
         merchant.setUser(user);
         merchant.setBusinessName(businessName);
@@ -81,11 +85,16 @@ public class MerchantService {
     }
 
     public void deleteMerchant(Long id) {
-        getById(id);
-        int rows = merchantRepository.deleteById(id);
+        Merchant existing = getById(id);
+        int rows = merchantRepository.deleteCascadeById(existing.getId(), existing.getMerchantCode());
         if (rows == 0) {
             throw new ProcessingException("Delete failed for merchant: " + id);
         }
+    }
+
+    public List<AutopayCustomerResponse> getAutopayCustomers(String merchantCode) {
+        getByCode(merchantCode);
+        return merchantRepository.findAutopayCustomersByMerchantCode(merchantCode);
     }
 
     public Merchant getByCode(String merchantCode) {
@@ -154,5 +163,20 @@ public class MerchantService {
             throw new BadRequestException("pin is required");
         }
         return "0000".equals(pin.trim());
+    }
+
+    private User resolveOrCreateMerchantOwner(String merchantCode, String businessName) {
+        String normalizedCode = merchantCode == null ? "merchant" : merchantCode.trim().toLowerCase();
+        String ownerEmail = normalizedCode + "@merchant.local";
+        return userRepository.findByEmail(ownerEmail).orElseGet(() -> {
+            User owner = new User();
+            owner.setName((businessName == null || businessName.isBlank() ? "Merchant" : businessName.trim()) + " Owner");
+            owner.setEmail(ownerEmail);
+            owner.setPhone(null);
+            owner.setPasswordHash("sim-password");
+            owner.setRole(Role.MERCHANT);
+            owner.setAccountBalance(BigDecimal.ZERO);
+            return userRepository.save(owner);
+        });
     }
 }

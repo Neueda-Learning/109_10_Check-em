@@ -107,6 +107,12 @@ public class PaymentService {
         payment.setPaymentMethod(parsePaymentMethod(req.getPaymentMethod()));
         payment.setStatus(PaymentStatus.INITIATED);
         payment.setDescription(req.getDescription());
+        payment.setOrderId(trimToNull(req.getOrderId()));
+        payment.setCustomerName(trimToNull(req.getCustomerName()) != null ? trimToNull(req.getCustomerName()) : customer.getName());
+        payment.setCustomerEmail(trimToNull(req.getCustomerEmail()) != null ? trimToNull(req.getCustomerEmail()) : customer.getEmail());
+        payment.setCustomerPhone(trimToNull(req.getCustomerPhone()) != null ? trimToNull(req.getCustomerPhone()) : customer.getPhone());
+        payment.setAutopayOptIn(Boolean.TRUE.equals(req.getAutopayOptIn()));
+        payment.setSubscriptionLabel(trimToNull(req.getSubscriptionLabel()));
 
         Payment saved = paymentRepository.save(payment);
         logHistory(saved, null, PaymentStatus.INITIATED, "Payment created");
@@ -167,7 +173,10 @@ public class PaymentService {
                     "Processed via " + selectedBankCode +
                     ", converted " + conversion.getSourceCurrency() + "->" + conversion.getTargetCurrency() +
                     " @ " + conversion.getRate());
-                userRepository.debitBalance(payment.getCustomer().getId(), payment.getAmount());
+            userRepository.debitBalance(payment.getCustomer().getId(), payment.getAmount());
+            if (payment.isAutopayOptIn() && payment.getMerchant() != null && payment.getMerchant().isAutopayEnabled()) {
+                paymentRepository.createAutopayMandateFromPayment(payment);
+            }
             payment.setStatus(PaymentStatus.SUCCESS);
             return payment;
         } catch (ProcessingException ex) {
@@ -376,9 +385,23 @@ public class PaymentService {
         if (req.getPaymentMethod() == null || req.getPaymentMethod().isBlank()) {
             errors.add("paymentMethod is required");
         }
+        if (Boolean.TRUE.equals(req.getAutopayOptIn())) {
+            if (req.getSubscriptionLabel() == null || req.getSubscriptionLabel().isBlank()) {
+                errors.add("subscriptionLabel is required when autopayOptIn is true");
+            }
+            if (req.getOrderId() == null || req.getOrderId().isBlank()) {
+                errors.add("orderId is required when autopayOptIn is true");
+            }
+        }
         if (!errors.isEmpty()) {
             throw new BadRequestException(String.join(", ", errors));
         }
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private boolean requiresBalanceCheck(User customer) {

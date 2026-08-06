@@ -1,5 +1,6 @@
 package com.payflow.repository;
 
+import com.payflow.dto.AutopayCustomerResponse;
 import com.payflow.enums.Role;
 import com.payflow.model.Merchant;
 import com.payflow.model.User;
@@ -10,7 +11,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
-import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,6 +45,25 @@ public class MerchantRepository {
         "u.name AS u_name, u.email AS u_email, u.role AS u_role " +
         "FROM merchants m JOIN users u ON m.user_id = u.id ";
 
+    private final RowMapper<AutopayCustomerResponse> autopayCustomerMapper = (rs, rowNum) -> {
+        AutopayCustomerResponse row = new AutopayCustomerResponse();
+        row.setCustomerId(rs.getLong("customer_id"));
+        row.setCustomerName(rs.getString("customer_name"));
+        row.setCustomerEmail(rs.getString("customer_email"));
+        row.setCustomerPhone(rs.getString("customer_phone"));
+        row.setMandateCount(rs.getLong("mandate_count"));
+        row.setActiveMandates(rs.getLong("active_mandates"));
+        row.setPausedMandates(rs.getLong("paused_mandates"));
+        row.setTotalDebitAmount(rs.getBigDecimal("total_debit_amount"));
+        row.setTotalMaxAmount(rs.getBigDecimal("total_max_amount"));
+        row.setLatestOrderId(rs.getString("latest_order_id"));
+        Timestamp updatedAt = rs.getTimestamp("last_updated_at");
+        if (updatedAt != null) {
+            row.setLastUpdatedAt(updatedAt.toLocalDateTime());
+        }
+        return row;
+    };
+
     public Merchant save(Merchant merchant) {
         String sql = "INSERT INTO merchants (user_id, business_name, merchant_code, currency, autopay_enabled) " +
                  "VALUES (?, ?, ?, ?, ?)";
@@ -72,6 +92,40 @@ public class MerchantRepository {
     public int deleteById(Long id) {
         String sql = "DELETE FROM merchants WHERE id = ?";
         return jdbc.update(sql, id);
+    }
+
+    public int deleteCascadeById(Long merchantId, String merchantCode) {
+        jdbc.update("DELETE FROM bank_route_history WHERE payment_id IN (SELECT id FROM payments WHERE merchant_id = ?)", merchantId);
+        jdbc.update("DELETE FROM payment_currency_conversions WHERE payment_id IN (SELECT id FROM payments WHERE merchant_id = ?)", merchantId);
+        jdbc.update("DELETE FROM payment_reversals WHERE payment_id IN (SELECT id FROM payments WHERE merchant_id = ?)", merchantId);
+        jdbc.update("DELETE FROM payment_status_history WHERE payment_id IN (SELECT id FROM payments WHERE merchant_id = ?)", merchantId);
+        jdbc.update("DELETE FROM payments WHERE merchant_id = ?", merchantId);
+        jdbc.update("DELETE FROM merchant_bank_routes WHERE merchant_id = ?", merchantId);
+        jdbc.update("DELETE FROM autopay_mandates WHERE merchant_code = ?", merchantCode);
+        return jdbc.update("DELETE FROM merchants WHERE id = ?", merchantId);
+    }
+
+    public List<AutopayCustomerResponse> findAutopayCustomersByMerchantCode(String merchantCode) {
+        String sql = """
+                SELECT
+                    u.id AS customer_id,
+                    COALESCE(MAX(am.customer_name), u.name) AS customer_name,
+                    COALESCE(MAX(am.customer_email), u.email) AS customer_email,
+                    COALESCE(MAX(am.customer_phone), u.phone) AS customer_phone,
+                    COUNT(*) AS mandate_count,
+                    SUM(CASE WHEN am.status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_mandates,
+                    SUM(CASE WHEN am.status = 'PAUSED' THEN 1 ELSE 0 END) AS paused_mandates,
+                    COALESCE(SUM(am.debit_amount), 0) AS total_debit_amount,
+                    COALESCE(SUM(am.max_amount), 0) AS total_max_amount,
+                    MAX(am.order_id) AS latest_order_id,
+                    MAX(am.updated_at) AS last_updated_at
+                FROM autopay_mandates am
+                JOIN users u ON u.id = am.customer_id
+                WHERE am.merchant_code = ?
+                GROUP BY u.id, u.name, u.email, u.phone
+                ORDER BY active_mandates DESC, mandate_count DESC, u.name ASC
+                """;
+        return jdbc.query(sql, autopayCustomerMapper, merchantCode);
     }
 
     public Optional<Merchant> findById(Long id) {

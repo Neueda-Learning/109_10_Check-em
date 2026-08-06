@@ -25,6 +25,7 @@ import {
   normalizeCardNumber,
   updateBackendMandateStatus,
   isValidCardNumber,
+  isValidFutureExpiry,
   isValidE164Phone,
   isValidUpiId,
   type Currency,
@@ -60,12 +61,14 @@ function AutopayPage() {
   const [label, setLabel] = useState("H&M India — monthly essentials");
   const [amount, setAmount] = useState("2500");
   const [cap, setCap] = useState("5000");
-  const [otp, setOtp] = useState("");
+  const [setupOtp, setSetupOtp] = useState("");
+  const [actionOtp, setActionOtp] = useState("");
   const [currency, setCurrency] = useState<Currency>("INR");
   const [method, setMethod] = useState<MethodId>("card");
   const [cardNumber, setCardNumber] = useState("");
   const [cardHolderName, setCardHolderName] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
   const [upiId, setUpiId] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAccountNumber, setBankAccountNumber] = useState("");
@@ -103,12 +106,12 @@ function AutopayPage() {
       toast.error("The spend cap must be at least the debit amount.");
       return;
     }
-    if (otp.length !== 6) {
+    if (setupOtp.length !== 6) {
       toast.error("Enter the 6-digit OTP to create mandate.");
       return;
     }
 
-    if (method === "card") {
+    if (method === "card" || method === "emi") {
       if (!isValidCardNumber(cardNumber)) {
         toast.error("Enter a valid card number.");
         return;
@@ -117,8 +120,12 @@ function AutopayPage() {
         toast.error("Card holder name is required.");
         return;
       }
-      if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(cardExpiry)) {
-        toast.error("Card expiry must be MM/YY.");
+      if (!isValidFutureExpiry(cardExpiry)) {
+        toast.error("Card expiry must be a valid future date in MM/YY format.");
+        return;
+      }
+      if (!/^\d{3,4}$/.test(cardCvv)) {
+        toast.error("Enter a valid card CVV (3 or 4 digits).");
         return;
       }
     }
@@ -143,8 +150,9 @@ function AutopayPage() {
             ? "NET_BANKING"
             : method === "emi"
               ? "CARD"
-              : (method.toUpperCase() as "CARD" | "UPI" | "NET_BANKING" | "BANK_TRANSFER" | "WALLET"),
-        otp,
+              : (method.toUpperCase() as
+                  "CARD" | "UPI" | "NET_BANKING" | "BANK_TRANSFER" | "WALLET"),
+        otp: setupOtp,
         cardNumber: normalizeCardNumber(cardNumber),
         cardHolderName: cardHolderName.trim(),
         cardExpiry,
@@ -159,7 +167,8 @@ function AutopayPage() {
         frequency: frequency.toUpperCase() as "WEEKLY" | "MONTHLY" | "QUARTERLY",
       });
       toast.success("Mandate created and OTP verified.");
-      setOtp("");
+      setSetupOtp("");
+      setCardCvv("");
       await loadMandates();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Unable to create mandate");
@@ -167,7 +176,7 @@ function AutopayPage() {
   };
 
   const toggle = async (m: ApiMandate) => {
-    if (otp.length !== 6) {
+    if (actionOtp.length !== 6) {
       toast.error("Enter OTP to pause or resume a mandate.");
       return;
     }
@@ -175,10 +184,10 @@ function AutopayPage() {
       await updateBackendMandateStatus({
         mandateId: m.id,
         status: m.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
-        otp,
+        otp: actionOtp,
       });
       toast.info(m.status === "ACTIVE" ? "Mandate paused." : "Mandate resumed.");
-      setOtp("");
+      setActionOtp("");
       await loadMandates();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Unable to update mandate status");
@@ -186,14 +195,14 @@ function AutopayPage() {
   };
 
   const deleteMandate = async (id: number) => {
-    if (otp.length !== 6) {
+    if (actionOtp.length !== 6) {
       toast.error("Enter OTP to delete a mandate.");
       return;
     }
     try {
-      await deleteBackendMandate(id, otp);
+      await deleteBackendMandate(id, actionOtp);
       toast.success("Mandate deleted.");
-      setOtp("");
+      setActionOtp("");
       await loadMandates();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Unable to delete mandate");
@@ -282,7 +291,7 @@ function AutopayPage() {
                 </Select>
               </Field>
 
-              {method === "card" && (
+              {(method === "card" || method === "emi") && (
                 <>
                   <Field label="Card number">
                     <Input
@@ -304,11 +313,23 @@ function AutopayPage() {
                       <Input
                         className="mono"
                         value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value.replace(/[^0-9/]/g, "").slice(0, 5))}
+                        onChange={(e) =>
+                          setCardExpiry(e.target.value.replace(/[^0-9/]/g, "").slice(0, 5))
+                        }
                         placeholder="08/29"
                       />
                     </Field>
                   </div>
+                  <Field label="CVV">
+                    <Input
+                      className="mono"
+                      value={cardCvv}
+                      onChange={(e) =>
+                        setCardCvv(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))
+                      }
+                      placeholder="123"
+                    />
+                  </Field>
                 </>
               )}
 
@@ -323,7 +344,7 @@ function AutopayPage() {
                 </Field>
               )}
 
-              {(method === "netbanking" || method === "emi") && (
+              {method === "netbanking" && (
                 <>
                   <Field label="Bank name">
                     <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
@@ -333,7 +354,9 @@ function AutopayPage() {
                       <Input
                         className="mono"
                         value={bankAccountNumber}
-                        onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^0-9]/g, ""))}
+                        onChange={(e) =>
+                          setBankAccountNumber(e.target.value.replace(/[^0-9]/g, ""))
+                        }
                       />
                     </Field>
                     <Field label="IFSC">
@@ -359,11 +382,11 @@ function AutopayPage() {
                 </Field>
               )}
 
-              <Field label="OTP verification (Demo: 123456)">
+              <Field label="OTP for mandate setup (Demo: 123456)">
                 <Input
                   className="mono"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                  value={setupOtp}
+                  onChange={(e) => setSetupOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
                   placeholder="123456"
                 />
               </Field>
@@ -379,6 +402,20 @@ function AutopayPage() {
           </div>
 
           <div className="space-y-3">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <Field label="OTP for pause / resume / cancel mandate">
+                <Input
+                  className="mono"
+                  value={actionOtp}
+                  onChange={(e) => setActionOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                  placeholder="123456"
+                />
+              </Field>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                This OTP is required each time you pause, resume, or cancel an existing mandate.
+              </p>
+            </div>
+
             {loading ? (
               <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
                 <p className="text-sm text-muted-foreground">Loading mandates...</p>

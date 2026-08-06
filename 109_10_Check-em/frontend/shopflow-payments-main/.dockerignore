@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.output/
+.vite/
+.env
+.env.*
+.git/
+*.log
+bun.lockb

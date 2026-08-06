@@ -36,8 +36,9 @@ function CharityStep() {
   if (!draft) return null;
 
   const subtotalInr = draft.amountInr + draft.charityInr;
-  const fxChargeInr = draft.currency === "INR" ? 0 : computeFxChargeInr(subtotalInr, draft.currency);
-  const needsFxConsent = draft.currency !== "INR";
+  const fxChargeInr =
+    draft.currency === draft.storeCurrency ? 0 : computeFxChargeInr(subtotalInr, draft.currency);
+  const needsFxConsent = draft.currency !== draft.storeCurrency;
   const canProceed = !needsFxConsent || draft.fxConsentAccepted;
 
   return (
@@ -57,7 +58,10 @@ function CharityStep() {
                 type="button"
                 onClick={() => {
                   const nextSubtotal = draft.amountInr + a;
-                  const nextFx = draft.currency === "INR" ? 0 : computeFxChargeInr(nextSubtotal, draft.currency);
+                  const nextFx =
+                    draft.currency === draft.storeCurrency
+                      ? 0
+                      : computeFxChargeInr(nextSubtotal, draft.currency);
                   patch({
                     charityInr: a,
                     charityCause: a === 0 ? null : (draft.charityCause ?? CHARITIES[0]!.name),
@@ -115,8 +119,9 @@ function CharityStep() {
           <div className="rounded-2xl border border-warning/40 bg-warning/10 p-5 shadow-card">
             <p className="text-sm font-semibold">Cross-currency payment disclosure</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              Your payment will be converted from INR to {draft.currency}. Global card/payment rails
-              may apply a conversion spread, cross-border assessment, and processing fee.
+              Your payment will be converted from {draft.storeCurrency} to {draft.currency}. Global
+              card/payment rails may apply a conversion spread, cross-border assessment, and
+              processing fee.
             </p>
             <div className="mt-3 rounded-lg border border-border bg-card p-3 text-xs">
               <div className="flex justify-between gap-2">

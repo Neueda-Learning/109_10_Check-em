@@ -90,6 +90,7 @@ function MethodStep() {
   const selected = draft.method;
   const isCardLike = selected === "card" || selected === "emi";
   const ready = Boolean(selected && draft.instrument.trim().length >= 2);
+  const autopayAllowed = draft.autopayAllowed;
 
   const validateAndContinue = () => {
     if (!selected) {
@@ -99,7 +100,7 @@ function MethodStep() {
 
     const value = draft.instrument.trim();
     if (isCardLike && !isValidCardNumber16(value)) {
-      setInstrumentError("Enter a valid 16-digit card number in XXXX XXXX XXXX XXXX format.");
+      setInstrumentError("Enter a 16-digit card number in XXXX XXXX XXXX XXXX format.");
       return;
     }
     if (isCardLike) {
@@ -129,6 +130,9 @@ function MethodStep() {
       return;
     }
     setInstrumentError(null);
+    if (!autopayAllowed && draft.autopay) {
+      patch({ autopay: false });
+    }
     navigate({ to: "/pay/charity" });
   };
 
@@ -280,12 +284,14 @@ function MethodStep() {
               <div>
                 <p className="text-sm font-semibold">Save this instrument for Autopay</p>
                 <p className="text-xs text-muted-foreground">
-                  Creates a mandate so future orders are charged automatically, within a cap you
-                  set.
+                  {autopayAllowed
+                    ? "Creates a mandate so future orders are charged automatically, within a cap you set."
+                    : "Autopay is disabled by this company. One-time payments are still enabled."}
                 </p>
               </div>
               <Switch
                 checked={draft.autopay}
+                disabled={!autopayAllowed}
                 onCheckedChange={(v) => patch({ autopay: v })}
                 aria-label="Enable autopay"
               />

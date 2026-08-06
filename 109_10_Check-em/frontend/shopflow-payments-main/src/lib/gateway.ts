@@ -95,6 +95,7 @@ export interface Draft {
   idempotencyKey: string;
   merchantCode: string;
   merchantName: string;
+  storeCurrency: Currency;
   amountInr: number;
   currency: Currency;
   method: MethodId | null;
@@ -104,6 +105,7 @@ export interface Draft {
   charityCause: string | null;
   customer: { name: string; email: string; phone: string };
   autopay: boolean;
+  autopayAllowed: boolean;
   forceFailure: boolean;
   fxChargeInr: number;
   fxConsentAccepted: boolean;
@@ -194,7 +196,7 @@ export function isValidCardNumber(value: string): boolean {
 }
 
 export function isValidCardNumber16(value: string): boolean {
-  return /^\d{16}$/.test(normalizeCardNumber(value)) && isValidCardNumber(value);
+  return /^\d{16}$/.test(normalizeCardNumber(value));
 }
 
 export function isValidFutureExpiry(value: string, now = new Date()): boolean {
@@ -223,6 +225,7 @@ export function newDraft(amountInr: number): Draft {
     idempotencyKey: rid("idem"),
     merchantCode: "HM001",
     merchantName: "H&M",
+    storeCurrency: "INR",
     amountInr,
     currency: "INR",
     method: null,
@@ -232,6 +235,7 @@ export function newDraft(amountInr: number): Draft {
     charityCause: null,
     customer: { name: "", email: "", phone: "" },
     autopay: false,
+    autopayAllowed: true,
     forceFailure: false,
     fxChargeInr: 0,
     fxConsentAccepted: false,
@@ -243,6 +247,8 @@ export function getDraft(): Draft | null {
   if (!raw) return null;
   return {
     ...raw,
+    storeCurrency: raw.storeCurrency ?? "INR",
+    autopayAllowed: raw.autopayAllowed ?? true,
     fxChargeInr: raw.fxChargeInr ?? 0,
     fxConsentAccepted: raw.fxConsentAccepted ?? false,
   };
@@ -419,6 +425,7 @@ export interface ApiDashboardMerchant {
   businessName: string;
   logoUrl?: string;
   currency: string;
+  autopayEnabled: boolean;
   primaryBankCode?: string;
   totalPayments: number;
   successPayments: number;
@@ -483,6 +490,7 @@ export interface MerchantSettings {
   businessName: string;
   currency: string;
   preferredBankCode: string;
+  autopayEnabled: boolean;
 }
 
 export interface ApiBankNode {
@@ -564,6 +572,31 @@ export const companyCodeToLabel: Record<string, string> = {
   HIL001: "Hilton",
 };
 
+export function getOrderItemsForMerchant(merchantCode: string) {
+  if (merchantCode === "IND001") {
+    return [
+      { name: "Flight fare BLR -> DEL", qty: 1, inr: 5200 },
+      { name: "Seat + cabin baggage", qty: 1, inr: 900 },
+    ];
+  }
+  if (merchantCode === "HIL001") {
+    return [
+      { name: "Deluxe room - 1 night", qty: 1, inr: 7200 },
+      { name: "Taxes and service fee", qty: 1, inr: 1300 },
+    ];
+  }
+  if (merchantCode === "MAX001") {
+    return [
+      { name: "Casual wear set", qty: 1, inr: 2100 },
+      { name: "Store delivery", qty: 1, inr: 140 },
+    ];
+  }
+  return [
+    { name: "H&M essentials pack", qty: 1, inr: 2450 },
+    { name: "Priority delivery", qty: 1, inr: 120 },
+  ];
+}
+
 export const companyVisualsByCode: Record<string, { name: string; logoUrl?: string }> = {
   HM001: { name: "H&M", logoUrl: "https://logo.clearbit.com/hm.com" },
   MAX001: { name: "Max", logoUrl: "https://logo.clearbit.com/maxfashion.com" },
@@ -596,12 +629,14 @@ export async function updateMerchantSettings(input: {
   businessName: string;
   currency: string;
   preferredBankCode: string;
+  autopayEnabled: boolean;
 }) {
   await api<ApiMerchant>(`/api/merchants/${input.merchantId}`, {
     method: "PUT",
     body: JSON.stringify({
       businessName: input.businessName,
       currency: input.currency.toUpperCase(),
+      autopayEnabled: input.autopayEnabled,
     }),
   });
   return api<{ message: string }>(
@@ -636,6 +671,12 @@ export async function fetchPaymentConversion(paymentId: number) {
 
 export async function fetchPaymentReversals(paymentId: number) {
   return api<ApiReversal[]>(`/api/payments/${paymentId}/reversals`);
+}
+
+export async function fetchPaymentBalanceCheck(paymentId: number) {
+  return api<{ paymentId: number; sufficientFunds: boolean }>(
+    `/api/payments/${paymentId}/balance-check`,
+  );
 }
 
 export async function createBackendPayment(input: {

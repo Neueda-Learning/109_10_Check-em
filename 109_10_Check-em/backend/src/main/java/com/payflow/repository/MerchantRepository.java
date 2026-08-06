@@ -29,6 +29,7 @@ public class MerchantRepository {
         m.setBusinessName(rs.getString("business_name"));
         m.setMerchantCode(rs.getString("merchant_code"));
         m.setCurrency(rs.getString("currency"));
+        m.setAutopayEnabled(rs.getBoolean("autopay_enabled"));
         User user = new User();
         user.setId(rs.getLong("user_id"));
         user.setName(rs.getString("u_name"));
@@ -39,13 +40,13 @@ public class MerchantRepository {
     };
 
     private static final String BASE_SELECT =
-        "SELECT m.id, m.user_id, m.business_name, m.merchant_code, m.currency, " +
+        "SELECT m.id, m.user_id, m.business_name, m.merchant_code, m.currency, m.autopay_enabled, " +
         "u.name AS u_name, u.email AS u_email, u.role AS u_role " +
         "FROM merchants m JOIN users u ON m.user_id = u.id ";
 
     public Merchant save(Merchant merchant) {
-        String sql = "INSERT INTO merchants (user_id, business_name, merchant_code, currency) " +
-                     "VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO merchants (user_id, business_name, merchant_code, currency, autopay_enabled) " +
+                 "VALUES (?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, new String[]{"id"});
@@ -53,6 +54,7 @@ public class MerchantRepository {
             ps.setString(2, merchant.getBusinessName());
             ps.setString(3, merchant.getMerchantCode());
             ps.setString(4, merchant.getCurrency());
+            ps.setBoolean(5, merchant.isAutopayEnabled());
             return ps;
         }, keyHolder);
         merchant.setId(keyHolder.getKey().longValue());
@@ -61,9 +63,9 @@ public class MerchantRepository {
 
     // UPDATE business name and currency
     // merchant_code is not updatable — it's like a username
-    public int update(Long id, String businessName, String currency) {
-        String sql = "UPDATE merchants SET business_name = ?, currency = ? WHERE id = ?";
-        return jdbc.update(sql, businessName, currency, id);
+    public int update(Long id, String businessName, String currency, boolean autopayEnabled) {
+        String sql = "UPDATE merchants SET business_name = ?, currency = ?, autopay_enabled = ? WHERE id = ?";
+        return jdbc.update(sql, businessName, currency, autopayEnabled, id);
     }
 
     // DELETE merchant by ID

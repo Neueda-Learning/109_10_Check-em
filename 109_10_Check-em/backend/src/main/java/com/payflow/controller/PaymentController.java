@@ -128,6 +128,14 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getLatestConversion(id));
     }
 
+    @GetMapping("/{id}/balance-check")
+    public ResponseEntity<Map<String, Object>> checkBalance(@PathVariable Long id) {
+        return ResponseEntity.ok(Map.of(
+                "paymentId", id,
+                "sufficientFunds", paymentService.hasSufficientCustomerBalance(id)
+        ));
+    }
+
     // Configure merchant preferred bank without touching merchant APIs
     @PostMapping("/routing/merchant-bank")
         public ResponseEntity<Map<String, String>> configureMerchantBank(

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ShieldCheck, Repeat, Globe2, GitBranch, AlertTriangle } from "lucide-react";
 
 import { CheckoutShell } from "@/components/checkout-shell";
@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select";
 import {
   CURRENCIES,
+  fetchMerchantSettings,
+  getOrderItemsForMerchant,
   isValidE164Phone,
   isValidEmail,
   newDraft,
@@ -43,27 +45,61 @@ export const Route = createFileRoute("/gateway")({
   component: CheckoutStart,
 });
 
-const ITEMS = [
-  { name: "Premium Cart Bundle", qty: 1, inr: 2450 },
-  { name: "Fast Delivery", qty: 1, inr: 120 },
-];
-
-const SUBTOTAL = ITEMS.reduce((s, i) => s + i.inr * i.qty, 0);
-
 function CheckoutStart() {
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const orderItems = useMemo(() => getOrderItemsForMerchant(search.merchantCode), [search.merchantCode]);
+  const subtotal = useMemo(
+    () => orderItems.reduce((sum, item) => sum + item.inr * item.qty, 0),
+    [orderItems],
+  );
   const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string }>({});
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [draft, setDraft] = useState<Draft>(() => ({
-    ...newDraft(SUBTOTAL),
+    ...newDraft(subtotal),
     merchantCode: search.merchantCode,
     merchantName: search.merchantName,
-    customer: {
-      name: "Aarav Sharma",
-      email: "aarav.sharma@example.com",
-      phone: "+919876543210",
-    },
+    amountInr: subtotal,
+    customer: { name: "", email: "", phone: "" },
   }));
+
+  useEffect(() => {
+    let active = true;
+    setLoadingSettings(true);
+    fetchMerchantSettings(search.merchantCode)
+      .then((settings) => {
+        if (!active) return;
+        const storeCurrency = settings.currency as Currency;
+        setDraft((prev) => ({
+          ...prev,
+          merchantCode: search.merchantCode,
+          merchantName: search.merchantName,
+          amountInr: subtotal,
+          storeCurrency,
+          currency: storeCurrency,
+          autopayAllowed: settings.autopayEnabled,
+          autopay: settings.autopayEnabled ? prev.autopay : false,
+          fxChargeInr: 0,
+          fxConsentAccepted: false,
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setDraft((prev) => ({
+          ...prev,
+          merchantCode: search.merchantCode,
+          merchantName: search.merchantName,
+          amountInr: subtotal,
+          customer: prev.customer,
+        }));
+      })
+      .finally(() => {
+        if (active) setLoadingSettings(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [search.merchantCode, search.merchantName, subtotal]);
 
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -90,9 +126,12 @@ function CheckoutStart() {
       step="cart"
       title={`${draft.merchantName} Gateway Checkout`}
       subtitle="Enter your details and continue to payment mode. The backend routing and payment checks are simulated in real time."
-      aside={<OrderSummary draft={draft} items={ITEMS} />}
+      aside={<OrderSummary draft={draft} items={orderItems} />}
     >
       <div className="space-y-6">
+        {loadingSettings && (
+          <p className="text-sm text-muted-foreground">Loading company currency and autopay settings...</p>
+        )}
         <div className="grid-hero rounded-2xl border border-border bg-card p-6 shadow-card">
           <div className="mb-4 rounded-xl border border-primary/40 bg-accent p-3 text-sm">
             Merchant: <span className="mono font-semibold">{draft.merchantName}</span> (
@@ -151,6 +190,12 @@ function CheckoutStart() {
               <Input readOnly value={draft.orderId} className="mono" />
             </Field>
           </div>
+
+          {!draft.autopayAllowed && (
+            <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
+              Autopay is currently disabled for this company. You can still complete one-time payments.
+            </div>
+          )}
 
           <div className="mt-5 flex items-start justify-between gap-4 rounded-xl border border-warning/40 bg-warning/10 p-4">
             <div className="flex gap-3">

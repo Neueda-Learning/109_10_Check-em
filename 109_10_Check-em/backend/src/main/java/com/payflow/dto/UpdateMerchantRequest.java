@@ -13,6 +13,8 @@ public class UpdateMerchantRequest {
     @Pattern(regexp = "^[A-Z]{3}$", message = "currency must be a 3-letter ISO code")
     private String currency;
 
+    private Boolean autopayEnabled;
+
     public String getBusinessName() {
         return businessName;
     }
@@ -27,5 +29,13 @@ public class UpdateMerchantRequest {
 
     public void setCurrency(String currency) {
         this.currency = currency;
+    }
+
+    public Boolean getAutopayEnabled() {
+        return autopayEnabled;
+    }
+
+    public void setAutopayEnabled(Boolean autopayEnabled) {
+        this.autopayEnabled = autopayEnabled;
     }
 }

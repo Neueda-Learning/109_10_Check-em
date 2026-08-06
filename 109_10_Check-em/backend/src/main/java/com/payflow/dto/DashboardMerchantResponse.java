@@ -9,6 +9,7 @@ public class DashboardMerchantResponse {
     private String businessName;
     private String logoUrl;
     private String currency;
+    private boolean autopayEnabled;
     private String primaryBankCode;
     private long totalPayments;
     private long successPayments;
@@ -71,6 +72,14 @@ public class DashboardMerchantResponse {
 
     public void setPrimaryBankCode(String primaryBankCode) {
         this.primaryBankCode = primaryBankCode;
+    }
+
+    public boolean isAutopayEnabled() {
+        return autopayEnabled;
+    }
+
+    public void setAutopayEnabled(boolean autopayEnabled) {
+        this.autopayEnabled = autopayEnabled;
     }
 
     public long getTotalPayments() {

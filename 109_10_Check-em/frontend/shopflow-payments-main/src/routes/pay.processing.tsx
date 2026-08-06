@@ -1,14 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, GitBranch, Landmark, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { CheckoutShell } from "@/components/checkout-shell";
 import { OrderSummary } from "@/components/order-summary";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useDraft } from "@/hooks/use-draft";
 import {
-  fetchPaymentRoute,
+  fetchPaymentBalanceCheck,
   processBackendPayment,
-  type ApiBankRoute,
   type ApiPayment,
 } from "@/lib/gateway";
 
@@ -21,148 +23,188 @@ function ProcessingStep() {
   const { id } = Route.useSearch();
   const navigate = useNavigate();
   const { draft } = useDraft();
+  const [cardPin, setCardPin] = useState("");
+  const [netbankingUser, setNetbankingUser] = useState("");
+  const [netbankingPassword, setNetbankingPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const [payment, setPayment] = useState<ApiPayment | null>(null);
-  const [route, setRoute] = useState<ApiBankRoute | null>(null);
-  const [message, setMessage] = useState("Starting transaction...");
-  const [stage, setStage] = useState<"redirecting" | "bank" | "returning">("redirecting");
+  const [phase, setPhase] = useState<"bank-auth" | "portal-redirect">("bank-auth");
+  const method = draft?.method ?? "card";
 
-  useEffect(() => {
-    if (!draft) return;
-    if (!id) {
-      navigate({
-        to: "/gateway",
-        search: { merchantCode: draft.merchantCode, merchantName: draft.merchantName },
-      });
-      return;
+  const cleanedId = id.replace(/["']/g, "").trim();
+  const paymentId = Number(cleanedId);
+
+  const canSubmit = useMemo(() => {
+    if (method === "card" || method === "emi") return cardPin.length === 4;
+    if (method === "netbanking") {
+      return netbankingUser.trim().toUpperCase() === "ABC" && netbankingPassword.trim().toUpperCase() === "ABC";
     }
+    return otp === "121212" || otp === "242424";
+  }, [cardPin, method, netbankingPassword, netbankingUser, otp]);
 
-    const paymentId = Number(id);
-    const bankName = bankNames[draft.customerBankCode] ?? draft.customerBankCode;
-    const run = async () => {
-      setStage("redirecting");
-      setMessage("Redirecting to your bank's secure authorisation page...");
-      await pause(900);
+  if (!draft) {
+    return (
+      <CheckoutShell
+        step="processing"
+        title="Bank Authentication"
+        subtitle="Preparing your bank session..."
+        aside={null}
+      >
+        <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-card">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+          <p className="mt-4 text-lg font-semibold">Loading checkout state...</p>
+        </div>
+      </CheckoutShell>
+    );
+  }
 
-      setStage("bank");
-      setMessage(`Authorising payment with ${bankName}...`);
-      await pause(1400);
+  const bankName = bankNames[draft.customerBankCode] ?? draft.customerBankCode;
+
+  if (!Number.isFinite(paymentId) || paymentId <= 0) {
+    return (
+      <CheckoutShell
+        step="processing"
+        title="Bank Authentication"
+        subtitle="We could not read the payment reference."
+        aside={<OrderSummary draft={draft} />}
+      >
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+          Invalid payment reference in the processing URL.
+        </div>
+        <Button className="mt-4" onClick={() => navigate({ to: "/gateway" })}>
+          Go home
+        </Button>
+      </CheckoutShell>
+    );
+  }
+
+  const verifyAndProcess = async () => {
+    if (!paymentId || Number.isNaN(paymentId)) return;
+    setSubmitting(true);
+    setStatusText("");
+
+    try {
+      if (method !== "card" && method !== "emi" && method !== "netbanking") {
+        setStatusText("OTP VERIFIED");
+      }
+
+      const balanceCheck = await fetchPaymentBalanceCheck(paymentId);
+      const sufficientFunds = balanceCheck.sufficientFunds;
 
       const result = await processBackendPayment({
         paymentId,
         customerBankCode: draft.customerBankCode,
-        simulateHighTraffic: draft.forceFailure,
-        simulateInsufficientFunds: draft.forceFailure,
+        simulateHighTraffic: false,
+        simulateInsufficientFunds: !sufficientFunds,
         simulateNetworkError: false,
       });
       setPayment(result);
-      try {
-        const routeData = await fetchPaymentRoute(paymentId);
-        setRoute(routeData);
-      } catch {
-        setRoute(null);
+
+      if (sufficientFunds && result.status === "SUCCESS") {
+        setStatusText("PAYMENT SUCCESSFUL");
+      } else {
+        setStatusText("PAYMENT UNSUCCESSFUL DUE TO INSUFFICIENT FUNDS");
       }
 
-      setStage("returning");
-      setMessage(
-        result.status === "SUCCESS"
-          ? "Bank approved the payment. Returning to merchant..."
-          : "Bank declined the payment. Returning to merchant...",
-      );
-      setTimeout(
-        () => navigate({ to: "/pay/receipt/$id", params: { id: String(paymentId) } }),
-        1400,
-      );
-    };
+      window.setTimeout(() => {
+        setPhase("portal-redirect");
+      }, 900);
 
-    run().catch(() => {
-      setMessage("Payment processing failed unexpectedly. Returning to gateway...");
-      setTimeout(
-        () =>
-          navigate({
-            to: "/gateway",
-            search: { merchantCode: draft.merchantCode, merchantName: draft.merchantName },
-          }),
-        1400,
-      );
-    });
-  }, [draft, id, navigate]);
-
-  if (!draft) return null;
-
-  const bankName = bankNames[draft.customerBankCode] ?? draft.customerBankCode;
+      window.setTimeout(() => {
+        navigate({ to: "/pay/receipt/$id", params: { id: String(paymentId) } });
+      }, 1800);
+    } catch {
+      setStatusText("PAYMENT UNSUCCESSFUL DUE TO INSUFFICIENT FUNDS");
+      window.setTimeout(() => {
+        navigate({ to: "/pay/receipt/$id", params: { id: String(paymentId) } });
+      }, 1400);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <CheckoutShell
       step="processing"
-      title="Gateway Processing"
-      subtitle="The gateway is now routing this payment through bank simulation checks."
+      title="Bank Authentication"
+      subtitle="You are now on your bank's verification page."
       aside={<OrderSummary draft={draft} />}
     >
       <div className="space-y-6">
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card">
-          {stage === "bank" ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                    <Landmark className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold">{bankName} Secure Authorisation</p>
-                    <p className="text-xs text-muted-foreground">
-                      Verifying funds, 3DS status, and issuer rules for this transaction.
-                    </p>
-                  </div>
-                </div>
-                <span className="rounded-full border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground">
-                  Hosted bank page
-                </span>
-              </div>
-
-              <div className="rounded-xl border border-primary/30 bg-accent p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Current action</p>
-                <div className="mt-2 flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <p className="text-sm font-semibold">{message}</p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3 text-xs text-muted-foreground">
-                <div className="rounded-lg border border-border p-3">Cardholder authentication</div>
-                <div className="rounded-lg border border-border p-3">Issuer balance verification</div>
-                <div className="rounded-lg border border-border p-3">Acquirer risk and routing checks</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <p className="text-sm font-semibold">{message}</p>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {stage === "redirecting"
-                  ? "Handing off from merchant checkout to the simulated bank portal."
-                  : "Returning from the bank with the final authorization result."}
-              </p>
-            </>
-          )}
+        {phase === "portal-redirect" ? (
+          <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-card">
+            <p className="text-lg font-semibold">REDIRECTING TO PAYMENT PORTAL...</p>
+          </div>
+        ) : (
+          <>
+        <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-card">
+          <p className="text-lg font-semibold">Redirecting to bank's page</p>
         </div>
 
-        {route && (
-          <div className="rounded-2xl border border-primary/40 bg-accent p-5 shadow-card">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Route</h2>
-              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-1 text-[11px]">
-                <GitBranch className="h-3.5 w-3.5" /> {route.routingType}
-              </span>
-            </div>
-            <p className="mt-2 text-sm">
-              {route.merchantBankCode ?? "Merchant Bank"} {" -> "}{" "}
-              {route.customerBankCode ?? "Customer Bank"} via {route.selectedBankCode}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {route.reason ?? "Dynamic route selected by backend"}
-            </p>
+        <section className="rounded-2xl border border-sky-300 bg-sky-50 p-6 shadow-card">
+          <p className="text-xs uppercase tracking-wider text-sky-700">Hosted Bank Page</p>
+          <h2 className="mt-2 text-2xl font-bold text-sky-900">{bankName}</h2>
+          <p className="mt-2 text-sm text-sky-900">Hi {draft.customer.name || "Customer"}, account verified.</p>
+
+          <div className="mt-5 space-y-4 rounded-xl border border-sky-200 bg-white p-4">
+            {(method === "card" || method === "emi") && (
+              <div className="space-y-1.5">
+                <Label>Card PIN</Label>
+                <Input
+                  className="mono"
+                  type="password"
+                  value={cardPin}
+                  onChange={(e) => setCardPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="Enter 4-digit PIN"
+                />
+              </div>
+            )}
+
+            {method === "netbanking" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Net Banking Username</Label>
+                  <Input value={netbankingUser} onChange={(e) => setNetbankingUser(e.target.value)} placeholder="ABC" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Net Banking Password</Label>
+                  <Input
+                    type="password"
+                    value={netbankingPassword}
+                    onChange={(e) => setNetbankingPassword(e.target.value)}
+                    placeholder="ABC"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Use username ABC and password ABC for simulation.</p>
+              </>
+            )}
+
+            {method !== "card" && method !== "emi" && method !== "netbanking" && (
+              <>
+                <h3 className="text-sm font-semibold">2-Factor Authentication</h3>
+                <div className="space-y-1.5">
+                  <Label>OTP</Label>
+                  <Input
+                    className="mono"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="121212 or 242424"
+                  />
+                </div>
+              </>
+            )}
+
+            <Button onClick={verifyAndProcess} disabled={!canSubmit || submitting}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Authenticate and Pay"}
+            </Button>
+          </div>
+        </section>
+
+        {statusText && (
+          <div className="rounded-xl border border-border bg-card p-4 text-sm font-semibold">
+            {statusText}
           </div>
         )}
 
@@ -181,10 +223,12 @@ function ProcessingStep() {
                 <AlertCircle className="h-5 w-5 text-destructive" />
               )}
               <p className="text-sm font-semibold">
-                {payment.status === "SUCCESS" ? "Payment successful" : "Payment did not complete"}
+                {payment.status === "SUCCESS" ? "Payment successful" : "Payment unsuccessful"}
               </p>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </CheckoutShell>
@@ -198,7 +242,3 @@ const bankNames: Record<string, string> = {
   SBI: "State Bank of India",
   SIB: "South Indian Bank",
 };
-
-function pause(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

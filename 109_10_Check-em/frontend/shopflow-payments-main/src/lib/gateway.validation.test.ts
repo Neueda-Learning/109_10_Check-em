@@ -31,6 +31,7 @@ describe("gateway input validators", () => {
     expect(normalizeCardNumber("4242 4242 4242 4242")).toBe("4242424242424242");
     expect(isValidCardNumber("4242 4242 4242 4242")).toBe(true);
     expect(isValidCardNumber16("4242 4242 4242 4242")).toBe(true);
+    expect(isValidCardNumber16("4242-4242-4242-4242")).toBe(true);
     expect(isValidCardNumber16("378282246310005")).toBe(false);
     expect(isValidCardNumber("4242 4242 4242 4241")).toBe(false);
   });

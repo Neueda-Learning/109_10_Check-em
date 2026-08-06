@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search, SlidersHorizontal } from "lucide-react";
 
-import { SiteHeader, SecurityStrip } from "@/components/site-header";
+import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,19 @@ function PaymentsList() {
   const [status, setStatus] = useState<string>("all");
   const [method, setMethod] = useState<string>("all");
   const [company, setCompany] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"id" | "company" | "customer" | "status" | "amount">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const statusRank: Record<string, number> = {
+    INITIATED: 0,
+    PENDING: 1,
+    FAILED: 2,
+    REVERSED: 3,
+    SUCCESS: 4,
+  };
+
+  const compareText = (left: string, right: string) => left.localeCompare(right);
+  const compareRank = (left: number, right: number) => left - right;
 
   useEffect(() => {
     async function load() {
@@ -52,7 +65,7 @@ function PaymentsList() {
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return payments.filter((p) => {
+    const list = payments.filter((p) => {
       if (status !== "all" && p.status !== status) return false;
       if (method !== "all" && p.paymentMethod !== method) return false;
       if (company !== "all" && p.merchant?.merchantCode !== company) return false;
@@ -69,7 +82,32 @@ function PaymentsList() {
         .toLowerCase()
         .includes(needle);
     });
-  }, [payments, q, status, method, company]);
+
+    return [...list].sort((a, b) => {
+      const direction = sortDir === "asc" ? 1 : -1;
+      if (sortBy === "amount") return compareRank(a.amount, b.amount) * direction;
+      if (sortBy === "id") return compareRank(a.id, b.id) * direction;
+      if (sortBy === "company") {
+        return compareText(
+          companyCodeToLabel[a.merchant?.merchantCode ?? ""] ?? a.merchant?.merchantCode ?? "",
+          companyCodeToLabel[b.merchant?.merchantCode ?? ""] ?? b.merchant?.merchantCode ?? "",
+        ) * direction;
+      }
+      if (sortBy === "customer") {
+        return compareText(a.customer?.name ?? "", b.customer?.name ?? "") * direction;
+      }
+      return compareRank(statusRank[a.status] ?? 99, statusRank[b.status] ?? 99) * direction;
+    });
+  }, [payments, q, status, method, company, sortBy, sortDir]);
+
+  const setSort = (next: typeof sortBy) => {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(next);
+    setSortDir("asc");
+  };
 
   const successCount = payments.filter((p) => p.status === "SUCCESS").length;
   const totalVolume = payments.reduce((sum, p) => sum + p.amount, 0);
@@ -159,11 +197,11 @@ function PaymentsList() {
             <table className="w-full text-sm">
               <thead className="bg-secondary text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3">Payment</th>
-                  <th className="px-4 py-3">Company</th>
-                  <th className="hidden px-4 py-3 sm:table-cell">Customer</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
+                  <SortHeader label="Payment" active={sortBy === "id"} dir={sortDir} onClick={() => setSort("id")} />
+                  <SortHeader label="Company" active={sortBy === "company"} dir={sortDir} onClick={() => setSort("company")} />
+                  <SortHeader label="Customer" active={sortBy === "customer"} dir={sortDir} onClick={() => setSort("customer")} className="hidden sm:table-cell" />
+                  <SortHeader label="Status" active={sortBy === "status"} dir={sortDir} onClick={() => setSort("status")} />
+                  <SortHeader label="Amount" active={sortBy === "amount"} dir={sortDir} onClick={() => setSort("amount")} alignRight />
                 </tr>
               </thead>
               <tbody>
@@ -204,7 +242,37 @@ function PaymentsList() {
           <SecurityStrip />
         </div>
       </main>
+      <SiteFooter />
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  alignRight,
+  className,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+  alignRight?: boolean;
+  className?: string;
+}) {
+  return (
+    <th className={`px-4 py-3 ${alignRight ? "text-right" : ""} ${className ?? ""}`.trim()}>
+      <button
+        type="button"
+        className={`inline-flex items-center gap-1 ${alignRight ? "ml-auto" : ""}`}
+        onClick={onClick}
+      >
+        <span>{label}</span>
+        {active ? dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUpDown className="h-3.5 w-3.5" />}
+      </button>
+    </th>
   );
 }
 

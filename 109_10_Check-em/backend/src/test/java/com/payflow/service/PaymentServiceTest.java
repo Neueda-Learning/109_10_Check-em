@@ -101,6 +101,7 @@ class PaymentServiceTest {
         );
         when(currencyConversionService.convertAndStore(eq(1L), any(BigDecimal.class), eq("USD"), eq("INR")))
                 .thenReturn(conversion);
+        when(userRepository.debitBalance(2L, new BigDecimal("10.00"))).thenReturn(1);
 
         ProcessPaymentRequest req = new ProcessPaymentRequest();
         req.setCustomerBankCode("HDFC");
@@ -109,11 +110,61 @@ class PaymentServiceTest {
 
         assertEquals(PaymentStatus.SUCCESS, result.getStatus());
         verify(paymentRepository).updateStatus(1L, PaymentStatus.SUCCESS);
+        verify(userRepository).debitBalance(2L, new BigDecimal("10.00"));
     }
+
+        @Test
+        void processPayment_nonAaravCustomer_shouldSkipBalanceFailure() {
+        Payment payment = samplePayment(PaymentStatus.INITIATED, new BigDecimal("25.00"), "INR");
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        BankRoutingService.RouteDecision route = new BankRoutingService.RouteDecision(
+            "HSBC", "ICICI", "HSBC", "INTER_BANK", "Inter-bank routing applied"
+        );
+        when(bankRoutingService.chooseProcessingBank(any(Payment.class), eq("ICICI"), eq(false))).thenReturn(route);
+
+        CurrencyConversionService.ConversionResult conversion = new CurrencyConversionService.ConversionResult(
+            new BigDecimal("25.00"), new BigDecimal("25.00"), "INR", "INR"
+        );
+        when(currencyConversionService.convertAndStore(eq(1L), any(BigDecimal.class), eq("INR"), eq("INR")))
+            .thenReturn(conversion);
+        when(userRepository.debitBalance(2L, new BigDecimal("25.00"))).thenReturn(0);
+
+        ProcessPaymentRequest req = new ProcessPaymentRequest();
+        req.setCustomerBankCode("ICICI");
+        req.setSimulateInsufficientFunds(true);
+
+        Payment result = paymentService.processPayment(1L, req);
+
+        assertEquals(PaymentStatus.SUCCESS, result.getStatus());
+        verify(paymentRepository).updateStatus(1L, PaymentStatus.SUCCESS);
+        }
+
+        @Test
+        void processPayment_aaravCustomer_shouldStillFailOnInsufficientBalance() {
+        Payment payment = samplePayment(PaymentStatus.INITIATED, new BigDecimal("25.00"), "INR");
+        payment.getCustomer().setName("Aarav Sharma");
+        when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+        BankRoutingService.RouteDecision route = new BankRoutingService.RouteDecision(
+            "HSBC", "ICICI", "HSBC", "INTER_BANK", "Inter-bank routing applied"
+        );
+        when(bankRoutingService.chooseProcessingBank(any(Payment.class), eq("ICICI"), eq(false))).thenReturn(route);
+        when(userRepository.hasSufficientBalance(2L, new BigDecimal("25.00"))).thenReturn(false);
+
+        ProcessPaymentRequest req = new ProcessPaymentRequest();
+        req.setCustomerBankCode("ICICI");
+
+        Payment result = paymentService.processPayment(1L, req);
+
+        assertEquals(PaymentStatus.REVERSED, result.getStatus());
+        verify(paymentRepository).updateStatus(1L, PaymentStatus.REVERSED);
+        }
 
     @Test
     void processPayment_insufficientFunds_shouldAutoReverse() {
         Payment payment = samplePayment(PaymentStatus.INITIATED, new BigDecimal("25.00"), "INR");
+        payment.getCustomer().setName("Aarav Sharma");
         when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
         BankRoutingService.RouteDecision route = new BankRoutingService.RouteDecision(

@@ -6,6 +6,7 @@ public class Merchant {
     private String businessName;
     private String merchantCode;
     private String currency = "GBP";
+    private boolean autopayEnabled = true;
 
     public Long getId() {
         return id;
@@ -45,5 +46,13 @@ public class Merchant {
 
     public void setCurrency(String currency) {
         this.currency = currency;
+    }
+
+    public boolean isAutopayEnabled() {
+        return autopayEnabled;
+    }
+
+    public void setAutopayEnabled(boolean autopayEnabled) {
+        this.autopayEnabled = autopayEnabled;
     }
 }

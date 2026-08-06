@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, CreditCard, Loader2, Settings2 } from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { SiteHeader, SecurityStrip } from "@/components/site-header";
+import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -149,11 +149,6 @@ function Dashboard() {
                         <CreditCard className="h-4 w-4" /> Gateway checkout
                       </Link>
                     </Button>
-                    <Button variant="ghost" asChild>
-                      <Link to="/company/$code/settings" params={{ code: merchant.merchantCode }}>
-                        <Settings2 className="h-4 w-4" /> Settings
-                      </Link>
-                    </Button>
                   </div>
                 </div>
               );
@@ -165,6 +160,7 @@ function Dashboard() {
           <SecurityStrip />
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

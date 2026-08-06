@@ -23,11 +23,14 @@ public class DatabaseSchemaService {
                     phone VARCHAR(20) NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     role VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
+                    account_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     UNIQUE KEY uq_users_email (email)
                 )
                 """);
+
+        jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS account_balance DECIMAL(12,2) NOT NULL DEFAULT 0");
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS merchants (
@@ -36,12 +39,15 @@ public class DatabaseSchemaService {
                     business_name VARCHAR(255) NOT NULL,
                     merchant_code VARCHAR(50) NOT NULL,
                     currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+                    autopay_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     PRIMARY KEY (id),
                     UNIQUE KEY uq_merchant_code (merchant_code),
                     CONSTRAINT fk_merchant_user
                         FOREIGN KEY (user_id) REFERENCES users(id)
                 )
                 """);
+
+        jdbcTemplate.execute("ALTER TABLE merchants ADD COLUMN IF NOT EXISTS autopay_enabled BOOLEAN NOT NULL DEFAULT TRUE");
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS payments (
@@ -218,6 +224,12 @@ public class DatabaseSchemaService {
             createUserIfMissing("Fatima Noor", "fatima@demo.com", "+971501234567", "CUSTOMER");
             createUserIfMissing("Liam Walker", "liam@demo.com", "+61412345678", "CUSTOMER");
 
+        setAccountBalanceIfPresent("alice@demo.com", new BigDecimal("120000.00"));
+        setAccountBalanceIfPresent("bob@demo.com", new BigDecimal("8500.00"));
+        setAccountBalanceIfPresent("chris@demo.com", new BigDecimal("80.00"));
+        setAccountBalanceIfPresent("fatima@demo.com", new BigDecimal("45000.00"));
+        setAccountBalanceIfPresent("liam@demo.com", new BigDecimal("30000.00"));
+
         createMerchantIfMissing("store@hm.com", "H&M Retail", "HM001", "INR");
         createMerchantIfMissing("store@max.com", "Max Fashion", "MAX001", "INR");
         createMerchantIfMissing("store@indigo.com", "Indigo Airlines", "IND001", "INR");
@@ -334,12 +346,13 @@ public class DatabaseSchemaService {
             return;
         }
         jdbcTemplate.update(
-                "INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO users (name, email, phone, password_hash, role, account_balance) VALUES (?, ?, ?, ?, ?, ?)",
                 name,
                 email,
                 phone,
                 "sim-password",
-                role
+                role,
+                BigDecimal.ZERO
         );
     }
 
@@ -353,14 +366,22 @@ public class DatabaseSchemaService {
             return;
         }
         jdbcTemplate.update(
-                "INSERT INTO merchants (user_id, business_name, merchant_code, currency) " +
-                        "SELECT id, ?, ?, ? FROM users WHERE email = ?",
+            "INSERT INTO merchants (user_id, business_name, merchant_code, currency, autopay_enabled) " +
+                "SELECT id, ?, ?, ?, TRUE FROM users WHERE email = ?",
                 businessName,
                 merchantCode,
                 currency,
                 userEmail
         );
     }
+
+        private void setAccountBalanceIfPresent(String email, BigDecimal balance) {
+        jdbcTemplate.update(
+            "UPDATE users SET account_balance = ? WHERE email = ?",
+            balance,
+            email
+        );
+        }
 
         private void upsertMerchantRoute(String merchantCode, String preferredBankCode) {
         jdbcTemplate.update(

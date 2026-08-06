@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-import { SiteHeader, SecurityStrip } from "@/components/site-header";
+import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 import { StatusBadge, Timeline, type TimelineEntry } from "@/components/payment-timeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,6 @@ import {
   fetchPaymentReversals,
   fetchPaymentRoute,
   fmt,
-  reverseBackendPayment,
   updateBackendPaymentDescription,
   type ApiBankRoute,
   type ApiConversion,
@@ -72,19 +71,6 @@ function PaymentDetail() {
 
   if (!payment) return null;
 
-  const reverse = async () => {
-    try {
-      const updated = await reverseBackendPayment(
-        payment.id,
-        "Manual reversal from merchant dashboard",
-      );
-      setPayment(updated);
-      toast.success("Reversal initiated.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to reverse payment");
-    }
-  };
-
   const saveDescription = async () => {
     try {
       const updated = await updateBackendPaymentDescription(payment.id, description);
@@ -117,11 +103,6 @@ function PaymentDetail() {
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={payment.status} />
-            {payment.status === "SUCCESS" && (
-              <Button variant="outline" size="sm" onClick={reverse}>
-                <RotateCcw className="h-4 w-4" /> Reverse payment
-              </Button>
-            )}
           </div>
         </div>
 
@@ -174,6 +155,7 @@ function PaymentDetail() {
           <SecurityStrip />
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

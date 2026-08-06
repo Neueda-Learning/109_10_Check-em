@@ -3,7 +3,7 @@ import { Loader2, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { SiteHeader } from "@/components/site-header";
+import { SiteFooter, SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,6 +61,7 @@ function CompanySettings() {
         businessName: settings.businessName,
         currency: settings.currency,
         preferredBankCode: settings.preferredBankCode,
+        autopayEnabled: settings.autopayEnabled,
       });
       toast.success("Company settings updated.");
     } catch (e) {
@@ -159,6 +160,7 @@ function CompanySettings() {
           </div>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }

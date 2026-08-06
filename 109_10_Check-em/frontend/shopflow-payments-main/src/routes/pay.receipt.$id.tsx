@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, Download, RotateCcw, Search } from "lucide-r
 import { CheckoutShell } from "@/components/checkout-shell";
 import { StatusBadge, Timeline, type TimelineEntry } from "@/components/payment-timeline";
 import { Button } from "@/components/ui/button";
+import { downloadPaymentReceiptPdf } from "@/lib/pdf";
 import {
   clearDraft,
   fetchPaymentById,
@@ -77,7 +78,11 @@ function Receipt() {
             <Row label="Customer" value={payment.customer?.name ?? "-"} />
             <Row label="Merchant" value={payment.merchant?.businessName ?? "-"} />
           </div>
-          <Button variant="outline" className="mt-4 w-full" onClick={() => window.print()}>
+          <Button
+            variant="outline"
+            className="mt-4 w-full"
+            onClick={() => downloadPaymentReceiptPdf(payment)}
+          >
             <Download className="h-4 w-4" /> Save receipt
           </Button>
         </div>

@@ -8,6 +8,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -31,14 +32,15 @@ public class UserRepository {
         u.setPhone(rs.getString("phone"));
         u.setPasswordHash(rs.getString("password_hash"));
         u.setRole(Role.valueOf(rs.getString("role")));
+        u.setAccountBalance(rs.getBigDecimal("account_balance"));
         Timestamp ts = rs.getTimestamp("created_at");
         if (ts != null) u.setCreatedAt(ts.toLocalDateTime());
         return u;
     };
 
     public User save(User user) {
-        String sql = "INSERT INTO users (name, email, phone, password_hash, role) " +
-                     "VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO users (name, email, phone, password_hash, role, account_balance) " +
+                     "VALUES (?, ?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, new String[]{"id"});
@@ -47,6 +49,7 @@ public class UserRepository {
             ps.setString(3, user.getPhone());
             ps.setString(4, user.getPasswordHash());
             ps.setString(5, user.getRole().name());
+            ps.setBigDecimal(6, user.getAccountBalance() != null ? user.getAccountBalance() : BigDecimal.ZERO);
             return ps;
         }, keyHolder);
         user.setId(keyHolder.getKey().longValue());
@@ -84,5 +87,33 @@ public class UserRepository {
 
     public List<User> findAll() {
         return jdbc.query("SELECT * FROM users", userMapper);
+    }
+
+    public BigDecimal getAccountBalance(Long userId) {
+        BigDecimal balance = jdbc.queryForObject(
+                "SELECT account_balance FROM users WHERE id = ?",
+                BigDecimal.class,
+                userId
+        );
+        return balance != null ? balance : BigDecimal.ZERO;
+    }
+
+    public boolean hasSufficientBalance(Long userId, BigDecimal amount) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE id = ? AND account_balance >= ?",
+                Integer.class,
+                userId,
+                amount
+        );
+        return count != null && count > 0;
+    }
+
+    public int debitBalance(Long userId, BigDecimal amount) {
+        return jdbc.update(
+                "UPDATE users SET account_balance = account_balance - ? WHERE id = ? AND account_balance >= ?",
+                amount,
+                userId,
+                amount
+        );
     }
 }

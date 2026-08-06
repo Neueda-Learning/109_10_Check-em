@@ -19,7 +19,6 @@ export function SiteHeader() {
           <HeaderLink to="/">Dashboard</HeaderLink>
           <HeaderLink to="/gateway">Gateway</HeaderLink>
           <HeaderLink to="/payments">Payments</HeaderLink>
-          <HeaderLink to="/autopay">Autopay</HeaderLink>
           <HeaderLink to="/contact">Contact</HeaderLink>
           <ThemeToggle />
         </nav>
@@ -50,5 +49,22 @@ export function SecurityStrip() {
       <span>AES-256 tokenised vault</span>
       <span>RBI 2-factor compliant</span>
     </div>
+  );
+}
+
+export function SiteFooter() {
+  return (
+    <footer className="border-t border-border bg-card/50">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-xs text-muted-foreground">
+        <p>Check 'em Payment Gateway</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link to="/contact" className="underline underline-offset-4">
+            Contact us
+          </Link>
+          <span>Phone: +918112377491</span>
+          <span>Email: checkemsupport@gmail.com</span>
+        </div>
+      </div>
+    </footer>
   );
 }

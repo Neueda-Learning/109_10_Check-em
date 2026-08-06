@@ -2,6 +2,7 @@ package com.payflow.model;
 
 import com.payflow.enums.Role;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public class User {
@@ -11,6 +12,7 @@ public class User {
     private String phone;
     private String passwordHash;
     private Role role = Role.CUSTOMER;
+    private BigDecimal accountBalance;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -59,6 +61,14 @@ public class User {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public BigDecimal getAccountBalance() {
+        return accountBalance;
+    }
+
+    public void setAccountBalance(BigDecimal accountBalance) {
+        this.accountBalance = accountBalance;
     }
 
     public LocalDateTime getCreatedAt() {

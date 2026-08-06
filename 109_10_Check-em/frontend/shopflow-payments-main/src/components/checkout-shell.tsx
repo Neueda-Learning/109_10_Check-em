@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SiteHeader, SecurityStrip } from "@/components/site-header";
+import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 
 export const CHECKOUT_STEPS = [
   { key: "cart", label: "Order" },
@@ -90,6 +90,7 @@ export function CheckoutShell({
           <SecurityStrip />
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

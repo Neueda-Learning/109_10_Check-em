@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, Phone } from "lucide-react";
 
-import { SiteHeader, SecurityStrip } from "@/components/site-header";
+import { SiteFooter, SiteHeader, SecurityStrip } from "@/components/site-header";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/contact")({
       { title: "Contact — Check 'em" },
       {
         name: "description",
-        content: "Contact the Check 'em gateway team for merchant onboarding, support, and settlement help.",
+        content: "Reach Check 'em support for payment gateway assistance.",
       },
     ],
   }),
@@ -22,44 +22,33 @@ function ContactPage() {
       <SiteHeader />
       <main className="mx-auto max-w-5xl px-4 py-10">
         <div className="rounded-3xl border border-border bg-card p-6 shadow-lift">
-          <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Check 'em Support</p>
-          <h1 className="mt-2 text-3xl font-bold">Contact</h1>
+          <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Contact Us</p>
+          <h1 className="mt-2 text-3xl font-bold">Check 'em Support</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Need help with merchant onboarding, payment reconciliation, autopay mandates, or settlement currency settings?
-            Reach the gateway operations team below.
+            For payment help, merchant assistance, and transaction support, use the details below.
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-8 grid gap-4 md:grid-cols-2">
           <ContactCard
             icon={<Mail className="h-5 w-5" />}
             title="Email"
-            body="support@checkem-payments.demo"
+            body="checkemsupport@gmail.com"
             caption="Response within one business day"
           />
           <ContactCard
             icon={<Phone className="h-5 w-5" />}
             title="Phone"
-            body="+91 1800 123 9000"
+            body="+918112377491"
             caption="Mon-Sat · 09:00 to 18:00 IST"
           />
-          <ContactCard
-            icon={<MapPin className="h-5 w-5" />}
-            title="Operations Desk"
-            body="Bengaluru Gateway Hub"
-            caption="Merchant support and settlement ops"
-          />
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-border bg-card p-5 shadow-card text-sm text-muted-foreground">
-          For test merchants in this demo, use PIN 0000 on the company login page. Local support can also validate route,
-          reversal, and FX-charge simulation behavior.
         </div>
 
         <div className="mt-12 border-t border-border pt-6">
           <SecurityStrip />
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -29,6 +29,7 @@ CREATE TABLE users (
                     'MERCHANT',
                     'ADMIN'
                   )               NOT NULL DEFAULT 'CUSTOMER',
+    account_balance DECIMAL(12,2) NOT NULL DEFAULT 0,
     created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (id),
@@ -47,6 +48,7 @@ CREATE TABLE merchants (
     business_name   VARCHAR(255)    NOT NULL,
     merchant_code   VARCHAR(50)     NOT NULL,
     currency        VARCHAR(10)     NOT NULL DEFAULT 'GBP',
+  autopay_enabled BOOLEAN         NOT NULL DEFAULT TRUE,
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_merchant_code (merchant_code),
@@ -132,6 +134,9 @@ INSERT INTO users (name, email, phone, password_hash, role) VALUES
 INSERT INTO users (name, email, phone, password_hash, role) VALUES
 ('Alice Johnson',  'alice@demo.com',  '+447000000001', '$2b$12$replacewithrealbcrypt', 'CUSTOMER'),
 ('Bob Smith',      'bob@demo.com',    '+447000000002', '$2b$12$replacewithrealbcrypt', 'CUSTOMER');
+
+UPDATE users SET account_balance = 120000.00 WHERE email = 'alice@demo.com';
+UPDATE users SET account_balance = 80.00 WHERE email = 'bob@demo.com';
 
 -- H&M merchant profile (links to user id 1)
 INSERT INTO merchants (user_id, business_name, merchant_code, currency) VALUES

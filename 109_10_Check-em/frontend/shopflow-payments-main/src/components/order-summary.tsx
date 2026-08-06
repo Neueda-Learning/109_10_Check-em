@@ -1,4 +1,4 @@
-import { CURRENCIES, fmt, type Draft } from "@/lib/gateway";
+import { CURRENCIES, fmt, getOrderItemsForMerchant, type Draft } from "@/lib/gateway";
 import { Lock } from "lucide-react";
 
 export function OrderSummary({
@@ -8,7 +8,9 @@ export function OrderSummary({
   draft: Draft;
   items?: { name: string; qty: number; inr: number }[];
 }) {
-  const fxChargeInr = draft.fxChargeInr ?? 0;
+  const summaryItems = items ?? getOrderItemsForMerchant(draft.merchantCode);
+  const hasCurrencyChange = draft.currency !== draft.storeCurrency;
+  const fxChargeInr = hasCurrencyChange ? draft.fxChargeInr ?? 0 : 0;
   const total = draft.amountInr + draft.charityInr + fxChargeInr;
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
@@ -19,9 +21,9 @@ export function OrderSummary({
         <span className="mono text-[11px] text-muted-foreground">{draft.orderId}</span>
       </div>
 
-      {items && (
+      {summaryItems && (
         <ul className="mt-4 space-y-2.5 border-b border-border pb-4 text-sm">
-          {items.map((it) => (
+          {summaryItems.map((it) => (
             <li key={it.name} className="flex justify-between gap-3">
               <span className="text-muted-foreground">
                 {it.name} <span className="mono text-xs">×{it.qty}</span>
@@ -41,7 +43,11 @@ export function OrderSummary({
           />
         )}
         {fxChargeInr > 0 && (
-          <Row label="FX conversion & cross-border charges" value={fmt(fxChargeInr, draft.currency)} />
+          <Row
+            label="Conversion charges + transfer fee"
+            value={fmt(fxChargeInr, draft.currency)}
+            valueClassName="text-destructive"
+          />
         )}
         <div className="flex items-baseline justify-between border-t border-border pt-3">
           <dt className="font-semibold">Total payable</dt>
@@ -50,14 +56,13 @@ export function OrderSummary({
       </dl>
 
       <p className="mt-3 text-[11px] text-muted-foreground">
-        Settled in {CURRENCIES[draft.currency].label} ({draft.currency}). Merchant settlement
-        currency INR.
+        Store default currency: {CURRENCIES[draft.storeCurrency].label} ({draft.storeCurrency}).
       </p>
 
-      {draft.currency !== "INR" && (
+      {hasCurrencyChange && (
         <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-muted-foreground">
-          You are paying in {draft.currency}. Final payable includes conversion spread,
-          cross-border assessment, and processing fee once you consent.
+          Paying in {draft.currency} instead of {draft.storeCurrency}. Extra conversion charges are
+          shown above in red, and total payable is updated accordingly.
         </div>
       )}
 
@@ -76,11 +81,19 @@ export function OrderSummary({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="mono">{value}</dd>
+      <dd className={`mono ${valueClassName ?? ""}`.trim()}>{value}</dd>
     </div>
   );
 }

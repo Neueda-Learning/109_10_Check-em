@@ -6,6 +6,7 @@ public class MerchantSettingsResponse {
     private String businessName;
     private String currency;
     private String preferredBankCode;
+    private boolean autopayEnabled;
 
     public Long getMerchantId() {
         return merchantId;
@@ -45,5 +46,13 @@ public class MerchantSettingsResponse {
 
     public void setPreferredBankCode(String preferredBankCode) {
         this.preferredBankCode = preferredBankCode;
+    }
+
+    public boolean isAutopayEnabled() {
+        return autopayEnabled;
+    }
+
+    public void setAutopayEnabled(boolean autopayEnabled) {
+        this.autopayEnabled = autopayEnabled;
     }
 }

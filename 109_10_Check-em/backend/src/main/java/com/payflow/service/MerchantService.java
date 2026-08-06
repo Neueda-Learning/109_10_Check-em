@@ -61,18 +61,23 @@ public class MerchantService {
         merchant.setCurrency(currency != null
             ? CurrencyConversionService.normalizeCurrencyCode(currency)
             : "INR");
+        merchant.setAutopayEnabled(true);
         return merchantRepository.save(merchant);
     }
 
     public Merchant updateMerchant(Long id, UpdateMerchantRequest req) {
         Merchant existing = getById(id);
         String normalizedCurrency = CurrencyConversionService.normalizeCurrencyCode(req.getCurrency());
-        int rows = merchantRepository.update(id, req.getBusinessName(), normalizedCurrency);
+        boolean autopayEnabled = req.getAutopayEnabled() != null
+                ? req.getAutopayEnabled()
+                : existing.isAutopayEnabled();
+        int rows = merchantRepository.update(id, req.getBusinessName(), normalizedCurrency, autopayEnabled);
         if (rows == 0) {
             throw new ProcessingException("Update failed for merchant: " + id);
         }
         existing.setBusinessName(req.getBusinessName());
         existing.setCurrency(normalizedCurrency);
+        existing.setAutopayEnabled(autopayEnabled);
         return existing;
     }
 
@@ -115,6 +120,7 @@ public class MerchantService {
         dto.setBusinessName(merchant.getBusinessName());
         dto.setLogoUrl(LOGO_URLS.getOrDefault(merchant.getMerchantCode(), ""));
         dto.setCurrency(merchant.getCurrency());
+        dto.setAutopayEnabled(merchant.isAutopayEnabled());
         dto.setPrimaryBankCode(bankRoutingRepository.findPreferredBankCode(merchant.getId()).orElse("N/A"));
 
         List<Payment> payments = paymentRepository.findByMerchantId(merchant.getId());
@@ -140,6 +146,7 @@ public class MerchantService {
         response.setBusinessName(merchant.getBusinessName());
         response.setCurrency(merchant.getCurrency());
         response.setPreferredBankCode(bankRoutingRepository.findPreferredBankCode(merchant.getId()).orElse("HSBC"));
+        response.setAutopayEnabled(merchant.isAutopayEnabled());
         return response;
     }
 

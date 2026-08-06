@@ -1,18 +1,23 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Loader2, LogOut, Search, Settings2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
-import { SiteHeader } from "@/components/site-header";
+import { SiteFooter, SiteHeader } from "@/components/site-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { clearCompanyAuth, isCompanyAuthenticated } from "@/lib/company-session";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { isCompanyAuthenticated } from "@/lib/company-session";
+import { downloadCompanyPaymentsPdf } from "@/lib/pdf";
 import {
   companyVisualsByCode,
   companyCodeToLabel,
   fetchMerchantSettings,
   fetchMerchantPayments,
   fmt,
+  updateMerchantSettings,
   type ApiPayment,
   type Currency,
   type MerchantSettings,
@@ -27,28 +32,57 @@ function CompanyDashboard() {
   const navigate = useNavigate();
   const [payments, setPayments] = useState<ApiPayment[]>([]);
   const [settings, setSettings] = useState<MerchantSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [autopaySaving, setAutopaySaving] = useState(false);
+  const [sortBy, setSortBy] = useState<"id" | "customer" | "method" | "currency" | "status" | "amount">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const statusRank: Record<string, number> = {
+    INITIATED: 0,
+    PENDING: 1,
+    FAILED: 2,
+    REVERSED: 3,
+    SUCCESS: 4,
+  };
+  const methodRank: Record<string, number> = {
+    CARD: 0,
+    UPI: 1,
+    BANK_TRANSFER: 2,
+    WALLET: 3,
+  };
+
+  const compareText = (left: string, right: string) => left.localeCompare(right);
+  const compareRank = (left: number, right: number) => left - right;
 
   useEffect(() => {
     if (!isCompanyAuthenticated(code)) {
       navigate({ to: "/company/$code/login", params: { code } });
       return;
     }
-    Promise.all([fetchMerchantPayments(code), fetchMerchantSettings(code)])
-      .then(([merchantPayments, merchantSettings]) => {
-        setPayments(merchantPayments);
-        setSettings(merchantSettings);
+    setError("");
+    setPaymentsLoading(true);
+    setSettingsLoading(true);
+
+    fetchMerchantPayments(code)
+      .then(setPayments)
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Unable to load merchant dashboard");
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Unable to load merchant dashboard"))
-      .finally(() => setLoading(false));
+      .finally(() => setPaymentsLoading(false));
+
+    fetchMerchantSettings(code)
+      .then(setSettings)
+      .finally(() => setSettingsLoading(false));
   }, [code, navigate]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return payments;
-    return payments.filter((p) =>
+    const list = !q
+      ? payments
+      : payments.filter((p) =>
       [
         String(p.id),
         p.idempotencyKey,
@@ -62,11 +96,59 @@ function CompanyDashboard() {
         .toLowerCase()
         .includes(q),
     );
-  }, [payments, query]);
+
+    const sorted = [...list].sort((a, b) => {
+      const direction = sortDir === "asc" ? 1 : -1;
+      if (sortBy === "amount") return compareRank(a.amount, b.amount) * direction;
+      if (sortBy === "id") return compareRank(a.id, b.id) * direction;
+      if (sortBy === "customer") {
+        return compareText(a.customer?.name ?? "", b.customer?.name ?? "") * direction;
+      }
+      if (sortBy === "currency") {
+        return compareText(a.currency ?? "", b.currency ?? "") * direction;
+      }
+      if (sortBy === "method") {
+        return compareRank(methodRank[a.paymentMethod] ?? 99, methodRank[b.paymentMethod] ?? 99) * direction;
+      }
+      return compareRank(statusRank[a.status] ?? 99, statusRank[b.status] ?? 99) * direction;
+    });
+
+    return sorted;
+  }, [payments, query, sortBy, sortDir]);
 
   const companyName = companyCodeToLabel[code] ?? code;
   const companyLogo = companyVisualsByCode[code]?.logoUrl;
   const totalAmount = payments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+
+  const setSort = (next: typeof sortBy) => {
+    if (sortBy === next) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(next);
+    setSortDir("asc");
+  };
+
+  const saveAutopay = async (enabled: boolean) => {
+    if (!settings) return;
+    setAutopaySaving(true);
+    try {
+      await updateMerchantSettings({
+        merchantId: settings.merchantId,
+        merchantCode: settings.merchantCode,
+        businessName: settings.businessName,
+        currency: settings.currency,
+        preferredBankCode: settings.preferredBankCode,
+        autopayEnabled: enabled,
+      });
+      setSettings((prev) => (prev ? { ...prev, autopayEnabled: enabled } : prev));
+      toast.success(`Autopay ${enabled ? "enabled" : "disabled"} for ${companyName}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to update autopay setting");
+    } finally {
+      setAutopaySaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -96,24 +178,39 @@ function CompanyDashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/company/$code/settings" params={{ code }}>
-                <Settings2 className="h-4 w-4" /> Settings
-              </Link>
-            </Button>
             <Button
-              variant="ghost"
-              onClick={() => {
-                clearCompanyAuth(code);
-                navigate({ to: "/" });
-              }}
+              variant="outline"
+              onClick={() =>
+                downloadCompanyPaymentsPdf({
+                  companyName,
+                  companyCode: code,
+                  currency: (settings?.currency ?? "INR") as Currency,
+                  payments,
+                })
+              }
             >
-              <LogOut className="h-4 w-4" /> Logout
+              <Download className="h-4 w-4" /> Download Receipt
             </Button>
           </div>
         </div>
 
-        {!loading && (
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-card">
+          <div>
+            <Label className="text-sm font-semibold">Enable Autopay for this company</Label>
+            <p className="text-xs text-muted-foreground">
+              If turned off, checkout will not allow customers to save instruments for autopay.
+            </p>
+            {settingsLoading && <p className="mt-1 text-[11px] text-muted-foreground">Loading settings...</p>}
+          </div>
+          <Switch
+            checked={Boolean(settings?.autopayEnabled)}
+            disabled={!settings || settingsLoading || autopaySaving}
+            onCheckedChange={saveAutopay}
+            aria-label="Toggle merchant autopay"
+          />
+        </div>
+
+        {!paymentsLoading && (
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-border bg-card p-4 shadow-card">
               <p className="text-xs text-muted-foreground">Primary bank</p>
@@ -152,7 +249,7 @@ function CompanyDashboard() {
           </div>
         </div>
 
-        {loading ? (
+        {paymentsLoading ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading payments...
           </div>
@@ -166,17 +263,20 @@ function CompanyDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-secondary text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3">Payment</th>
-                  <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Mode</th>
-                  <th className="px-4 py-3">Currency</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
+                  <SortHeader label="Payment" active={sortBy === "id"} dir={sortDir} onClick={() => setSort("id")} />
+                  <SortHeader label="Customer" active={sortBy === "customer"} dir={sortDir} onClick={() => setSort("customer")} />
+                  <SortHeader label="Mode" active={sortBy === "method"} dir={sortDir} onClick={() => setSort("method")} />
+                  <SortHeader label="Currency" active={sortBy === "currency"} dir={sortDir} onClick={() => setSort("currency")} />
+                  <SortHeader label="Status" active={sortBy === "status"} dir={sortDir} onClick={() => setSort("status")} />
+                  <SortHeader label="Amount" active={sortBy === "amount"} dir={sortDir} onClick={() => setSort("amount")} alignRight />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.id} className="border-t border-border hover:bg-secondary/50">
+                {filtered.map((p, index) => (
+                  <tr
+                    key={p.id}
+                    className={`border-t border-border transition-colors hover:bg-secondary/70 ${rowShadeClasses[index % rowShadeClasses.length]}`}
+                  >
                     <td className="px-4 py-3">
                       <Link
                         to="/payments/$id"
@@ -217,6 +317,36 @@ function CompanyDashboard() {
           </div>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  alignRight,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+  alignRight?: boolean;
+}) {
+  return (
+    <th className={`px-4 py-3 ${alignRight ? "text-right" : ""}`}>
+      <button
+        type="button"
+        className={`inline-flex items-center gap-1 ${alignRight ? "ml-auto" : ""}`}
+        onClick={onClick}
+      >
+        <span>{label}</span>
+        {active ? dir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUpDown className="h-3.5 w-3.5" />}
+      </button>
+    </th>
+  );
+}
+
+const rowShadeClasses = ["bg-sky-50/70", "bg-emerald-50/70", "bg-amber-50/70", "bg-rose-50/70"];

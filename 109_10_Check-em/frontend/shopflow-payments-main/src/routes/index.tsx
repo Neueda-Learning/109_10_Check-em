@@ -273,7 +273,7 @@ function Dashboard() {
             </p>
             <p className="mt-1 text-xs">{error}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Ensure backend is running on http://localhost:8080, then refresh this page.
+              Ensure backend is running on http://10.9.78.23:8081, then refresh this page.
             </p>
           </div>
         ) : merchants.length === 0 ? (

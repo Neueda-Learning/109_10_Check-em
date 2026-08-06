@@ -31,20 +31,7 @@ pipeline {
         dir('109_10_Check-em/backend') {
             sh '''
                 chmod +x mvnw
-                MYSQL_CONTAINER=checkem-mysql-1
-                docker rm -f checkem-mysql-1
-                docker run -d --name checkem-mysql-1 -e MYSQL_ROOT_PASSWORD=n3u3da! -e MYSQL_DATABASE=payflow mysql:8.4
-                echo "Waiting for MySQL to become ready..."
-for i in $(seq 1 30); do
-  if docker exec checkem-mysql-1 mysql -uroot -p'n3u3da!' -e "SELECT 1" >/dev/null 2>&1; then
-    echo "MySQL is up and accepting root logins"
-    break
-  fi
-  echo "Attempt $i/30: not ready yet..."
-  sleep 3
-done
-                docker exec -i checkem-mysql-1 mysql -uroot -pn3u3da!
-                ...
+                ./mvnw test
             '''
         }
     }
